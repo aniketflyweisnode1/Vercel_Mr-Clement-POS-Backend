@@ -239,12 +239,15 @@ const getItemsByAuth = async (req, res) => {
 
     // Manually fetch related data for all items
     const itemsResponse = await Promise.all(items.map(async (item) => {
-      const [createByUser, updatedByUser] = await Promise.all([
+      const [itemsType, createByUser, updatedByUser] = await Promise.all([
+        Items_types.findOne({ Items_types_id: item.Items_types_id }),
         item.CreateBy ? User.findOne({ user_id: item.CreateBy }) : null,
         item.UpdatedBy ? User.findOne({ user_id: item.UpdatedBy }) : null
       ]);
 
       const itemObj = item.toObject();
+      itemObj.Items_types_id = itemsType ? 
+        { Items_types_id: itemsType.Items_types_id, Name: itemsType.Name, emozi: itemsType.emozi } : null;
       itemObj.CreateBy = createByUser ? 
         { user_id: createByUser.user_id, Name: createByUser.Name, email: createByUser.email } : null;
       itemObj.UpdatedBy = updatedByUser ? 
@@ -267,11 +270,80 @@ const getItemsByAuth = async (req, res) => {
   }
 };
 
+// Get Items by Item Type ID
+const getItemsByItemTypeId = async (req, res) => {
+  try {
+    const { itemTypeId } = req.params;
+    
+    if (!itemTypeId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Item Type ID is required'
+      });
+    }
+
+    // Check if item type exists
+    const itemType = await Items_types.findOne({ Items_types_id: parseInt(itemTypeId) });
+    if (!itemType) {
+      return res.status(404).json({
+        success: false,
+        message: 'Item Type not found'
+      });
+    }
+
+    const items = await Items.find({ Items_types_id: parseInt(itemTypeId) })
+      .sort({ CreateAt: -1 });
+    
+    if (!items || items.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No items found for this item type'
+      });
+    }
+
+    // Manually fetch related data for all items
+    const itemsWithPopulatedData = await Promise.all(
+      items.map(async (item) => {
+        const [itemsType, createByUser, updatedByUser] = await Promise.all([
+          Items_types.findOne({ Items_types_id: item.Items_types_id }),
+          item.CreateBy ? User.findOne({ user_id: item.CreateBy }) : null,
+          item.UpdatedBy ? User.findOne({ user_id: item.UpdatedBy }) : null
+        ]);
+
+        const itemResponse = item.toObject();
+        itemResponse.Items_types_id = itemsType ? { Items_types_id: itemsType.Items_types_id, Name: itemsType.Name, emozi: itemsType.emozi } : null;
+        itemResponse.CreateBy = createByUser ? { user_id: createByUser.user_id, Name: createByUser.Name, email: createByUser.email } : null;
+        itemResponse.UpdatedBy = updatedByUser ? { user_id: updatedByUser.user_id, Name: updatedByUser.Name, email: updatedByUser.email } : null;
+
+        return itemResponse;
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      count: itemsWithPopulatedData.length,
+      itemType: {
+        Items_types_id: itemType.Items_types_id,
+        Name: itemType.Name,
+        emozi: itemType.emozi
+      },
+      data: itemsWithPopulatedData
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching items by item type',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   createItems,
   updateItems,
   getItemsById,
   getAllItems,
   getItemsByAuth,
-  deleteItems
+  deleteItems,
+  getItemsByItemTypeId
 };

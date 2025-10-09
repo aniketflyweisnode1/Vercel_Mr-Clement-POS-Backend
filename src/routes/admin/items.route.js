@@ -8,7 +8,8 @@ const {
   getItemsById, 
   getAllItems,
   getItemsByAuth,
-  deleteItems
+  deleteItems,
+  getItemsByItemTypeId
 } = require('../../controllers/Items.Controller');
 
 // Items routes 29/08/2025
@@ -17,6 +18,7 @@ router.put('/update', auth, validateUpdateItems, handleValidationErrors, updateI
 router.get('/get/:id', auth, getItemsById);
 router.get('/getall', getAllItems);
 router.get('/getbyauth', auth, getItemsByAuth);
+router.get('/getbyitemtype/:itemTypeId', getItemsByItemTypeId);
 router.delete('/delete/:id', auth, deleteItems);
 
 module.exports = router;
