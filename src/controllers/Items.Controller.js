@@ -197,8 +197,8 @@ const getAllItems = async (req, res) => {
 // Delete Items
 const deleteItems = async (req, res) => {
   try {
-    const { id } = req.params;
     
+    const { id } = req.params;
     const items = await Items.findOne({ Items_id: parseInt(id) });
     
     if (!items) {
@@ -208,8 +208,7 @@ const deleteItems = async (req, res) => {
       });
     }
 
-    await Items.deleteOne({ Items_id: parseInt(id) });
-    
+    await Items.deleteOne({ Items_id: parseInt(id) });   
     res.status(200).json({
       success: true,
       message: 'Item deleted successfully'
@@ -293,7 +292,6 @@ const getItemsByItemTypeId = async (req, res) => {
 
     const items = await Items.find({ Items_types_id: parseInt(itemTypeId) })
       .sort({ CreateAt: -1 });
-    
     if (!items || items.length === 0) {
       return res.status(404).json({
         success: false,
