@@ -45,17 +45,17 @@ const sendForgetPasswordOTPController = async (req, res) => {
     await otp.save();
 
     // Send OTP via email
-    const emailResult = await sendForgetPasswordOTP(user.email, otpCode, user.Name);
+   // const emailResult = await sendForgetPasswordOTP(user.email, otpCode, user.Name);
 
-    if (!emailResult.success) {
+    //if (!emailResult.success) {
       // If email fails, delete the OTP and return error
-      await OTP.findByIdAndDelete(otp._id);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to send OTP email',
-        error: emailResult.error
-      });
-    }
+      // await OTP.findByIdAndDelete(otp._id);
+      // return res.status(500).json({
+      //   success: false,
+      //   message: 'Failed to send OTP email',
+      //   error: emailResult.error
+      // });
+    //}
 
     res.status(200).json({
       success: true,
@@ -63,7 +63,8 @@ const sendForgetPasswordOTPController = async (req, res) => {
       data: {
         user_id: user.user_id,
         email: user.email,
-        messageId: emailResult.messageId
+        OTP: otpCode
+      //  messageId: emailResult.messageId
       }
     });
 
