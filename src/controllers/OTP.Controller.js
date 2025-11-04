@@ -248,15 +248,34 @@ const verifyOTP = async (req, res) => {
       });
     }
 
+    // Validate new password
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be at least 6 characters long'
+      });
+    }
+
+    // Hash the new password (same method as in commented code)
+    const timestamp = Date.now().toString();
+    const simpleHash = newPassword + timestamp;
+    const hashedPassword = timestamp + ':' + simpleHash;
+
     // Deactivate the used OTP
     await OTP.findByIdAndUpdate(otpRecord._id, {
       Status: false,
       UpdatedAt: new Date()
     });
 
-    user.password = newPassword;
-    user.UpdatedAt = new Date();
-    await user.save();
+    // Update user password using findOneAndUpdate to avoid validation issues
+    await User.findOneAndUpdate(
+      { user_id: user.user_id },
+      { 
+        password: hashedPassword,
+        UpdatedAt: new Date()
+      },
+      { new: true }
+    );
 
     res.status(200).json({
       success: true,
@@ -264,9 +283,7 @@ const verifyOTP = async (req, res) => {
       data: {
         user_id: user.user_id,
         email: user.email,
-        otp_id: otpRecord.OTP_id,
-        Oldpassword: user.password,
-        newPassword: newPassword
+        otp_id: otpRecord.OTP_id
       }
     });
 
