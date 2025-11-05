@@ -17,6 +17,10 @@ const floorMapTableSchema = new mongoose.Schema({
     ref: 'Table',
     required: true
   },
+  Row_No: {
+    type: Number,
+    default: null
+  },
   Status: {
     type: Boolean,
     default: true

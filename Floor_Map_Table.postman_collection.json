@@ -1,0 +1,245 @@
+{
+	"info": {
+		"_postman_id": "floor-map-table-api",
+		"name": "Floor Map Table API",
+		"description": "Collection for Floor Map Table CRUD operations",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "pos",
+			"value": "http://localhost:3006",
+			"type": "string"
+		},
+		{
+			"key": "auth",
+			"value": "",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "Create Floor Map Table",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{auth}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"floor_id\": 1,\n  \"table_id\": 1,\n  \"Status\": true\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{pos}}/master/floor_map_table/create",
+					"host": [
+						"{{pos}}"
+					],
+					"path": [
+						"master",
+						"floor_map_table",
+						"create"
+					]
+				},
+				"description": "Create a new floor map table mapping"
+			},
+			"response": []
+		},
+		{
+			"name": "Update Floor Map Table",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{auth}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "PUT",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"id\": 1,\n  \"floor_id\": 1,\n  \"table_id\": 1,\n  \"Status\": true\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{pos}}/master/floor_map_table/update",
+					"host": [
+						"{{pos}}"
+					],
+					"path": [
+						"master",
+						"floor_map_table",
+						"update"
+					]
+				},
+				"description": "Update an existing floor map table mapping"
+			},
+			"response": []
+		},
+		{
+			"name": "Get Floor Map Table by ID",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{auth}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{pos}}/master/floor_map_table/getbyid/:id",
+					"host": [
+						"{{pos}}"
+					],
+					"path": [
+						"master",
+						"floor_map_table",
+						"getbyid",
+						":id"
+					],
+					"variable": [
+						{
+							"key": "id",
+							"value": "1",
+							"description": "Floor Map Table ID"
+						}
+					]
+				},
+				"description": "Get floor map table by ID"
+			},
+			"response": []
+		},
+		{
+			"name": "Get All Floor Map Tables",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{pos}}/master/floor_map_table/getall",
+					"host": [
+						"{{pos}}"
+					],
+					"path": [
+						"master",
+						"floor_map_table",
+						"getall"
+					]
+				},
+				"description": "Get all floor map tables (no auth required)"
+			},
+			"response": []
+		},
+		{
+			"name": "Get Tables by Floor ID",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{auth}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{pos}}/master/floor_map_table/getTablebyFloorid/:floor_id",
+					"host": [
+						"{{pos}}"
+					],
+					"path": [
+						"master",
+						"floor_map_table",
+						"getTablebyFloorid",
+						":floor_id"
+					],
+					"variable": [
+						{
+							"key": "floor_id",
+							"value": "1",
+							"description": "Floor ID"
+						}
+					]
+				},
+				"description": "Get all tables mapped to a specific floor ID"
+			},
+			"response": []
+		},
+		{
+			"name": "Delete Floor Map Table",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{auth}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "DELETE",
+				"header": [],
+				"url": {
+					"raw": "{{pos}}/master/floor_map_table/delete/:id",
+					"host": [
+						"{{pos}}"
+					],
+					"path": [
+						"master",
+						"floor_map_table",
+						"delete",
+						":id"
+					],
+					"variable": [
+						{
+							"key": "id",
+							"value": "1",
+							"description": "Floor Map Table ID"
+						}
+					]
+				},
+				"description": "Delete a floor map table mapping"
+			},
+			"response": []
+		}
+	]
+}
+
