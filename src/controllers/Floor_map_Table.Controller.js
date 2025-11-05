@@ -259,69 +259,93 @@ const getTableByFloorId = async (req, res) => {
       });
     }
 
+    // Get floor data once (all records have the same floor_id)
+    const floorData = floorMapTables[0]?.floor_id ? await Floor.findOne({ Floor_id: floorMapTables[0].floor_id }) : null;
+    const floorTypeData = floorData && floorData.Floor_Type_id ? await Floor_Type.findOne({ Floor_Type_id: floorData.Floor_Type_id }) : null;
+    
+    // Populate floor object with nested Floor_Type
+    let floorObj = null;
+    if (floorData) {
+      floorObj = floorData.toObject();
+      floorObj.Floor_Type_id = floorTypeData ? 
+        { Floor_Type_id: floorTypeData.Floor_Type_id, Floor_Type_Name: floorTypeData.Floor_Type_Name, emozi: floorTypeData.emozi } : null;
+    }
+
     // Manually fetch related data for all floor map tables
     const tablesResponse = await Promise.all(floorMapTables.map(async (floorMapTable) => {
-      const [createByUser, updatedByUser, floorData, tableData] = await Promise.all([
+      const [createByUser, updatedByUser, tableData] = await Promise.all([
         floorMapTable.CreateBy ? User.findOne({ user_id: floorMapTable.CreateBy }) : null,
         floorMapTable.UpdatedBy ? User.findOne({ user_id: floorMapTable.UpdatedBy }) : null,
-        floorMapTable.floor_id ? Floor.findOne({ Floor_id: floorMapTable.floor_id }) : null,
         floorMapTable.table_id ? Table.findOne({ Table_id: floorMapTable.table_id }) : null
       ]);
 
-      // Fetch nested data for floor (Floor_Type) and table (Table_types and Table-Booking-Status)
-      const [floorTypeData, tableTypeData, tableBookingStatusData] = await Promise.all([
-        floorData && floorData.Floor_Type_id ? Floor_Type.findOne({ Floor_Type_id: floorData.Floor_Type_id }) : null,
+      // Fetch nested data for table (Table_types and Table-Booking-Status)
+      const [tableTypeData, tableBookingStatusData] = await Promise.all([
         tableData && tableData.Table_types_id ? Table_types.findOne({ Table_types_id: tableData.Table_types_id }) : null,
         tableData && tableData['Table-Booking-Status_id'] ? Table_Booking_Status.findOne({ 'Table-Booking-Status_id': tableData['Table-Booking-Status_id'] }) : null
       ]);
 
-      const floorMapTableObj = floorMapTable.toObject();
-      
-      // Ensure Row_No is included in response
-      floorMapTableObj.Row_No = floorMapTable.Row_No !== undefined ? floorMapTable.Row_No : null;
-      
-      // Populate CreateBy and UpdatedBy with full user data
-      floorMapTableObj.CreateBy = createByUser ? 
-        { user_id: createByUser.user_id, Name: createByUser.Name, email: createByUser.email } : null;
-      floorMapTableObj.UpdatedBy = updatedByUser ? 
-        { user_id: updatedByUser.user_id, Name: updatedByUser.Name, email: updatedByUser.email } : null;
-      
-      // Populate floor_id with full floor data including nested Floor_Type
-      if (floorData) {
-        const floorObj = floorData.toObject();
-        floorObj.Floor_Type_id = floorTypeData ? 
-          { Floor_Type_id: floorTypeData.Floor_Type_id, Floor_Type_Name: floorTypeData.Floor_Type_Name, emozi: floorTypeData.emozi } : null;
-        floorMapTableObj.floor_id = floorObj;
-      } else {
-        floorMapTableObj.floor_id = null;
-      }
-      
       // Populate table_id with full table data including nested Table_types and Table-Booking-Status
+      let tableObj = null;
       if (tableData) {
-        const tableObj = tableData.toObject();
+        tableObj = tableData.toObject();
         tableObj.Table_types_id = tableTypeData ? 
           { Table_types_id: tableTypeData.Table_types_id, Name: tableTypeData.Name, emozi: tableTypeData.emozi } : null;
         tableObj['Table-Booking-Status_id'] = tableBookingStatusData ? 
           { 'Table-Booking-Status_id': tableBookingStatusData['Table-Booking-Status_id'], Name: tableBookingStatusData.Name } : null;
-        floorMapTableObj.table_id = tableObj;
-      } else {
-        floorMapTableObj.table_id = null;
+        
+        // Add floor_map_table metadata to table object
+        tableObj.floor_map_Table_id = floorMapTable.floor_map_Table_id;
+        tableObj.Row_No = floorMapTable.Row_No !== undefined ? floorMapTable.Row_No : null;
+        tableObj.Status = floorMapTable.Status;
+        tableObj.CreateBy = createByUser ? 
+          { user_id: createByUser.user_id, Name: createByUser.Name, email: createByUser.email } : null;
+        tableObj.UpdatedBy = updatedByUser ? 
+          { user_id: updatedByUser.user_id, Name: updatedByUser.Name, email: updatedByUser.email } : null;
+        tableObj.CreateAt = floorMapTable.CreateAt;
+        tableObj.UpdatedAt = floorMapTable.UpdatedAt;
       }
 
-      return floorMapTableObj;
+      return {
+        table: tableObj,
+        rowNo: floorMapTable.Row_No !== undefined ? floorMapTable.Row_No : null
+      };
     }));
 
-    // Sort the final array by Row_No (ascending order) to ensure proper ordering
-    tablesResponse.sort((a, b) => {
-      const rowNoA = a.Row_No !== null && a.Row_No !== undefined ? a.Row_No : 999999;
-      const rowNoB = b.Row_No !== null && b.Row_No !== undefined ? b.Row_No : 999999;
-      return rowNoA - rowNoB;
+    // Group tables by Row_No
+    const groupedByRowNo = {};
+    tablesResponse.forEach((item) => {
+      const rowNoKey = item.rowNo !== null && item.rowNo !== undefined ? `Row_No_${item.rowNo}` : 'Row_No_null';
+      
+      if (!groupedByRowNo[rowNoKey]) {
+        groupedByRowNo[rowNoKey] = {
+          Floor: floorObj,
+          tables: []
+        };
+      }
+      
+      if (item.table) {
+        groupedByRowNo[rowNoKey].tables.push(item.table);
+      }
+    });
+
+    // Sort Row_No keys numerically
+    const sortedKeys = Object.keys(groupedByRowNo).sort((a, b) => {
+      const numA = a === 'Row_No_null' ? 999999 : parseInt(a.replace('Row_No_', ''));
+      const numB = b === 'Row_No_null' ? 999999 : parseInt(b.replace('Row_No_', ''));
+      return numA - numB;
+    });
+
+    // Create sorted response object
+    const sortedResponse = {};
+    sortedKeys.forEach(key => {
+      sortedResponse[key] = groupedByRowNo[key];
     });
 
     res.status(200).json({
       success: true,
-      count: tablesResponse.length,
-      data: tablesResponse
+      count: floorMapTables.length,
+      data: sortedResponse
     });
   } catch (error) {
     res.status(500).json({
