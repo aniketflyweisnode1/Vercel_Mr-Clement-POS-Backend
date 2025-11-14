@@ -152,7 +152,16 @@ const getSupportTicketReplyById = async (req, res) => {
 // Get all support ticket replies
 const getAllSupportTicketReplies = async (req, res) => {
   try {
-    const supportTicketReplies = await support_ticket_reply.find()
+    // Get ticket_id from query parameter for filtering
+    const { ticket_id } = req.query;
+    
+    // Build query object
+    const query = {};
+    if (ticket_id) {
+      query.support_ticket_id = parseInt(ticket_id);
+    }
+    
+    const supportTicketReplies = await support_ticket_reply.find(query)
       .sort({ CreateAt: -1 });
 
     // Manually fetch related data for all support ticket replies
