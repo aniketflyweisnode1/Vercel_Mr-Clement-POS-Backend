@@ -132,9 +132,20 @@ const changePassword = async (req, res) => {
       });
     }
 
-    // Update password
-    user.password = newPassword;
-    await user.save();
+    // Hash the new password (same method as in User model pre-save hook)
+    const timestamp = Date.now().toString();
+    const simpleHash = newPassword + timestamp;
+    const hashedPassword = timestamp + ':' + simpleHash;
+
+    // Update password using updateOne to avoid full document validation
+    await User.updateOne(
+      { user_id: userId },
+      { 
+        password: hashedPassword,
+        UpdatedBy: userId,
+        UpdatedAt: new Date()
+      }
+    );
 
     res.status(200).json({
       success: true,
