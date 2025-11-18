@@ -179,8 +179,23 @@ const getAllTaxSetups = async (req, res) => {
 const getTaxSetupByAuth = async (req, res) => {
   try {
     const userId = req.user.user_id;
+    const { servicecharge } = req.query;
     
-    const taxSetups = await Tax_setup.find({ CreateBy: userId, Status: true }).sort({ CreateAt: -1 });
+    // Build filter object
+    const filter = {
+      CreateBy: userId,
+      Status: true
+    };
+    
+    // Add rate filter if servicecharge query parameter is provided
+    if (servicecharge !== undefined && servicecharge !== null && servicecharge !== '') {
+      const rateValue = parseFloat(servicecharge);
+      if (!isNaN(rateValue)) {
+        filter.rate = rateValue;
+      }
+    }
+    
+    const taxSetups = await Tax_setup.find(filter).sort({ CreateAt: -1 });
     
     if (!taxSetups || taxSetups.length === 0) {
       return res.status(404).json({
