@@ -158,7 +158,7 @@ const validateUpdateUser = [
     .isLength({ min: 10, max: 15 })
     .withMessage('Phone number must be between 10 and 15 characters'),
   body('password')
-    .optional()
+    .optional({ checkFalsy: true })
     .trim()
     .notEmpty()
     .withMessage('Password cannot be empty')

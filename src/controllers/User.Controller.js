@@ -19,6 +19,7 @@ const createUser = async (req, res) => {
       Language_id,
       Country_id,
       State_id,
+      password,
       City_id,
       email,
       phone,
@@ -119,6 +120,11 @@ const updateUser = async (req, res) => {
   try {
     const { id, ...updateData } = req.body;
     const userId = req.user.user_id;
+
+    // Remove empty password strings (they will be handled by validation, but this is a safety check)
+    if (updateData.password === '' || updateData.password === null) {
+      delete updateData.password;
+    }
 
     if (!id) {
       return res.status(400).json({
