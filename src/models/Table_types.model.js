@@ -25,6 +25,10 @@ const tableTypesSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  table_size: {
+    type: String,
+    default: "20*20"
+  },
   Status: {
     type: Boolean,
     default: true

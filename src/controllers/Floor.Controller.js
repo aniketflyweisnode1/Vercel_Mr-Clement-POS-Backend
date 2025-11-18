@@ -11,6 +11,9 @@ const createFloor = async (req, res) => {
       Total_Table_Count, 
       'Seating-Persons_Count': seatingPersonsCount, 
       Details, 
+      floor_width,
+      floor_height,
+      floor_image,
       Status 
     } = req.body;
     const userId = req.user.user_id;
@@ -21,6 +24,9 @@ const createFloor = async (req, res) => {
       Total_Table_Count,
       'Seating-Persons_Count': seatingPersonsCount,
       Details,
+      floor_width,
+      floor_height,
+      floor_image,
       Status,
       CreateBy: userId
     });
@@ -51,6 +57,9 @@ const updateFloor = async (req, res) => {
       Total_Table_Count, 
       'Seating-Persons_Count': seatingPersonsCount, 
       Details, 
+      floor_width,
+      floor_height,
+      floor_image,
       Status 
     } = req.body;
     const userId = req.user.user_id;
@@ -75,6 +84,9 @@ const updateFloor = async (req, res) => {
     if (Total_Table_Count !== undefined) floor.Total_Table_Count = Total_Table_Count;
     if (seatingPersonsCount !== undefined) floor['Seating-Persons_Count'] = seatingPersonsCount;
     if (Details !== undefined) floor.Details = Details;
+    if (floor_width !== undefined) floor.floor_width = floor_width;
+    if (floor_height !== undefined) floor.floor_height = floor_height;
+    if (floor_image !== undefined) floor.floor_image = floor_image;
     if (Status !== undefined) floor.Status = Status;
     
     floor.UpdatedBy = userId;

@@ -31,6 +31,18 @@ const floorSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  floor_width: {
+    type: String,
+    default: "80"
+  },
+  floor_height: {
+    type: String,
+    default: "100"
+  },
+  floor_image: {
+    type: String,
+    default: ""
+  },
   Status: {
     type: Boolean,
     default: true

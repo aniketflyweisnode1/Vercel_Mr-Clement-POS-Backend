@@ -4,7 +4,7 @@ const User = require('../models/User.model');
 // Create Table_types
 const createTableTypes = async (req, res) => {
   try {
-    const { emozi, image, Name, details, Status } = req.body;
+    const { emozi, image, Name, details, table_size, Status } = req.body;
     const userId = req.user.user_id;
 
     const tableTypes = new Table_types({
@@ -12,6 +12,7 @@ const createTableTypes = async (req, res) => {
       image,
       Name,
       details,
+      table_size,
       Status,
       CreateBy: userId
     });
@@ -35,7 +36,7 @@ const createTableTypes = async (req, res) => {
 // Update Table_types
 const updateTableTypes = async (req, res) => {
   try {
-    const { id, emozi, image, Name, details, Status } = req.body;
+    const { id, emozi, image, Name, details, table_size, Status } = req.body;
     const userId = req.user.user_id;
 
     if (!id) {
@@ -57,6 +58,7 @@ const updateTableTypes = async (req, res) => {
     if (image !== undefined) tableTypes.image = image;
     if (Name) tableTypes.Name = Name;
     if (details !== undefined) tableTypes.details = details;
+    if (table_size !== undefined) tableTypes.table_size = table_size;
     if (Status !== undefined) tableTypes.Status = Status;
     
     tableTypes.UpdatedBy = userId;
