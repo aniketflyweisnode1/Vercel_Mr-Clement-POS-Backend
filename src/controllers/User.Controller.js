@@ -636,6 +636,7 @@ const softDeleteUser = async (req, res) => {
 const getEmployeesByRestaurantId = async (req, res) => {
   try {
     const { restaurantId } = req.params;
+    const { Responsibility } = req.query;
     const parsedRestaurantId = parseInt(restaurantId);
 
     if (!restaurantId || isNaN(parsedRestaurantId)) {
@@ -645,7 +646,7 @@ const getEmployeesByRestaurantId = async (req, res) => {
       });
     }
 
-    const restaurantUser = await User.findOne({ CreateBy: parsedRestaurantId });
+    const restaurantUser = await User.findOne({ user_id: parsedRestaurantId });
     if (!restaurantUser) {
       return res.status(404).json({
         success: false,
@@ -661,8 +662,19 @@ const getEmployeesByRestaurantId = async (req, res) => {
       });
     }
 
-    const employees = await User.find({ CreateBy: parsedRestaurantId, Status: true })
-      .sort({ CreateAt: -1 });
+    const filter = { CreateBy: parsedRestaurantId, Status: true };
+    if (Responsibility !== undefined && Responsibility !== '') {
+      const parsedResponsibility = parseInt(Responsibility);
+      if (isNaN(parsedResponsibility)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Responsibility must be a valid numeric ID'
+        });
+      }
+      filter.Responsibility_id = parsedResponsibility;
+    }
+
+    const employees = await User.find(filter).sort({ CreateAt: -1 });
 
     if (!employees || employees.length === 0) {
       return res.status(404).json({
