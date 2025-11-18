@@ -192,7 +192,7 @@ const getItemMapAddonsByAuth = async (req, res) => {
   try {
     const userId = req.user.user_id;
     
-    const itemMapAddons = await Item_map_Addons.find({ CreateBy: userId, Status: true }).sort({ CreateAt: -1 });
+    const itemMapAddons = await item_map_Addons.find({ CreateBy: userId, Status: true }).sort({ CreateAt: -1 });
     
     if (!itemMapAddons || itemMapAddons.length === 0) {
       return res.status(404).json({
@@ -231,11 +231,68 @@ const getItemMapAddonsByAuth = async (req, res) => {
   }
 };
 
+// Get Item Map Addons by Item ID
+const getItemMapAddonsByItemId = async (req, res) => {
+  try {
+    const { itemid } = req.params;
+    
+    if (!itemid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Item ID is required'
+      });
+    }
+
+    const itemMapAddons = await item_map_Addons.find({ item_id: parseInt(itemid), Status: true })
+      .sort({ CreateAt: -1 });
+    
+    if (!itemMapAddons || itemMapAddons.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Item map addons not found for this item'
+      });
+    }
+
+    // Manually fetch related data for all item map addons
+    const itemMapAddonsResponse = await Promise.all(
+      itemMapAddons.map(async (itemMapAddon) => {
+        const [itemAddon, item, createByUser, updatedByUser] = await Promise.all([
+          item_Addons.findOne({ item_Addons_id: itemMapAddon.item_Addons_id }),
+          Items.findOne({ Items_id: itemMapAddon.item_id }),
+          itemMapAddon.CreateBy ? User.findOne({ user_id: itemMapAddon.CreateBy }) : null,
+          itemMapAddon.UpdatedBy ? User.findOne({ user_id: itemMapAddon.UpdatedBy }) : null
+        ]);
+
+        const itemMapAddonResponse = itemMapAddon.toObject();
+        itemMapAddonResponse.item_Addons_id = itemAddon ? { item_Addons_id: itemAddon.item_Addons_id, Addons: itemAddon.Addons } : null;
+        itemMapAddonResponse.item_id = item ? { Items_id: item.Items_id, 'item-name': item['item-name'], 'item-code': item['item-code'] } : null;
+        itemMapAddonResponse.CreateBy = createByUser ? { user_id: createByUser.user_id, Name: createByUser.Name, email: createByUser.email } : null;
+        itemMapAddonResponse.UpdatedBy = updatedByUser ? { user_id: updatedByUser.user_id, Name: updatedByUser.Name, email: updatedByUser.email } : null;
+
+        return itemMapAddonResponse;
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      count: itemMapAddonsResponse.length,
+      data: itemMapAddonsResponse
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching item map addons by item ID',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   createItemMapAddons,
   updateItemMapAddons,
   getItemMapAddonsById,
   getAllItemMapAddons,
   getItemMapAddonsByAuth,
+  getItemMapAddonsByItemId,
   deleteItemMapAddons
 };

@@ -192,7 +192,7 @@ const getItemMapVariantsByAuth = async (req, res) => {
   try {
     const userId = req.user.user_id;
     
-    const itemMapVariants = await Item_map_Variants.find({ CreateBy: userId, Status: true }).sort({ CreateAt: -1 });
+    const itemMapVariants = await item_map_Variants.find({ CreateBy: userId, Status: true }).sort({ CreateAt: -1 });
     
     if (!itemMapVariants || itemMapVariants.length === 0) {
       return res.status(404).json({
@@ -231,11 +231,68 @@ const getItemMapVariantsByAuth = async (req, res) => {
   }
 };
 
+// Get Item Map Variants by Item ID
+const getItemMapVariantsByItemId = async (req, res) => {
+  try {
+    const { itemid } = req.params;
+    
+    if (!itemid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Item ID is required'
+      });
+    }
+
+    const itemMapVariants = await item_map_Variants.find({ item_id: parseInt(itemid), Status: true })
+      .sort({ CreateAt: -1 });
+    
+    if (!itemMapVariants || itemMapVariants.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Item map variants not found for this item'
+      });
+    }
+
+    // Manually fetch related data for all item map variants
+    const itemMapVariantsResponse = await Promise.all(
+      itemMapVariants.map(async (itemMapVariant) => {
+        const [itemVariant, item, createByUser, updatedByUser] = await Promise.all([
+          item_Variants.findOne({ item_Variants_id: itemMapVariant.item_Variants_id }),
+          Items.findOne({ Items_id: itemMapVariant.item_id }),
+          itemMapVariant.CreateBy ? User.findOne({ user_id: itemMapVariant.CreateBy }) : null,
+          itemMapVariant.UpdatedBy ? User.findOne({ user_id: itemMapVariant.UpdatedBy }) : null
+        ]);
+
+        const itemMapVariantResponse = itemMapVariant.toObject();
+        itemMapVariantResponse.item_Variants_id = itemVariant ? { item_Variants_id: itemVariant.item_Variants_id, Variants: itemVariant.Variants } : null;
+        itemMapVariantResponse.item_id = item ? { Items_id: item.Items_id, 'item-name': item['item-name'], 'item-code': item['item-code'] } : null;
+        itemMapVariantResponse.CreateBy = createByUser ? { user_id: createByUser.user_id, Name: createByUser.Name, email: createByUser.email } : null;
+        itemMapVariantResponse.UpdatedBy = updatedByUser ? { user_id: updatedByUser.user_id, Name: updatedByUser.Name, email: updatedByUser.email } : null;
+
+        return itemMapVariantResponse;
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      count: itemMapVariantsResponse.length,
+      data: itemMapVariantsResponse
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching item map variants by item ID',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   createItemMapVariants,
   updateItemMapVariants,
   getItemMapVariantsById,
   getAllItemMapVariants,
   getItemMapVariantsByAuth,
+  getItemMapVariantsByItemId,
   deleteItemMapVariants
 };
