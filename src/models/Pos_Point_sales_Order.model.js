@@ -60,6 +60,10 @@ const posPointSalesOrderSchema = new mongoose.Schema({
     type: Number,
     ref: 'Kitchen'
   },
+  Restaurant_id: {
+    type: Number,
+    default: null
+  },
   Status: {
     type: Boolean,
     default: true

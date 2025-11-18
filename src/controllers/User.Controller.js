@@ -499,6 +499,83 @@ const softDeleteUser = async (req, res) => {
   }
 };
 
+// Get employees by restaurant (created_by) ID
+const getEmployeesByRestaurantId = async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
+    const parsedRestaurantId = parseInt(restaurantId);
+
+    if (!restaurantId || isNaN(parsedRestaurantId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid restaurant ID is required'
+      });
+    }
+
+    const restaurantUser = await User.findOne({ CreateBy: parsedRestaurantId });
+    if (!restaurantUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'Restaurant user not found'
+      });
+    }
+
+    const restaurantRole = await Role.findOne({ Role_id: restaurantUser.Role_id });
+    if (!restaurantRole || restaurantRole.role_name?.toLowerCase() !== 'restaurant') {
+      return res.status(400).json({
+        success: false,
+        message: 'Provided user is not associated with a restaurant role'
+      });
+    }
+
+    const employees = await User.find({ CreateBy: parsedRestaurantId, Status: true })
+      .sort({ CreateAt: -1 });
+
+    if (!employees || employees.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Employees not found for this restaurant'
+      });
+    }
+
+    const employeesResponse = await Promise.all(employees.map(async (employee) => {
+      const [responsibility, role, language, country, state, city, createByUser] = await Promise.all([
+        Responsibility.findOne({ Responsibility_id: employee.Responsibility_id }),
+        Role.findOne({ Role_id: employee.Role_id }),
+        Language.findOne({ Language_id: employee.Language_id }),
+        Country.findOne({ Country_id: employee.Country_id }),
+        State.findOne({ State_id: employee.State_id }),
+        City.findOne({ City_id: employee.City_id }),
+        employee.CreateBy ? User.findOne({ user_id: employee.CreateBy }) : null
+      ]);
+
+      const employeeObj = employee.toObject();
+      employeeObj.Responsibility_id = responsibility ? { Responsibility_id: responsibility.Responsibility_id, Responsibility_name: responsibility.Responsibility_name } : null;
+      employeeObj.Role_id = role ? { Role_id: role.Role_id, role_name: role.role_name } : null;
+      employeeObj.Language_id = language ? { Language_id: language.Language_id, Language_name: language.Language_name } : null;
+      employeeObj.Country_id = country ? { Country_id: country.Country_id, Country_name: country.Country_name, code: country.code } : null;
+      employeeObj.State_id = state ? { State_id: state.State_id, state_name: state.state_name, Code: state.Code } : null;
+      employeeObj.City_id = city ? { City_id: city.City_id, City_name: city.City_name, Code: city.Code } : null;
+      employeeObj.CreateBy = createByUser ? { user_id: createByUser.user_id, Name: createByUser.Name, email: createByUser.email } : null;
+
+      delete employeeObj.password;
+      return employeeObj;
+    }));
+
+    res.status(200).json({
+      success: true,
+      count: employeesResponse.length,
+      data: employeesResponse
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching employees for restaurant',
+      error: error.message
+    });
+  }
+};
+
 // Logout User
 const logout = async (req, res) => {
   try {
@@ -528,5 +605,6 @@ module.exports = {
   getUserByAuth,
   deleteUser,
   softDeleteUser,
+  getEmployeesByRestaurantId,
   logout
 };

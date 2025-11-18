@@ -1,11 +1,63 @@
 const Pos_Point_sales_Order = require('../models/Pos_Point_sales_Order.model');
 const User = require('../models/User.model');
+const Role = require('../models/Role.model');
 const Items = require('../models/Items.model');
 const item_Addons = require('../models/item_Addons.model');
 const item_Variants = require('../models/item_Variants.model');
 const Customer = require('../models/Customer.model');
 const Table = require('../models/Table.model');
 const Kitchen = require('../models/Kitchen.model');
+
+const RESTAURANT_ROLE_NAME = 'restaurant';
+
+const createHttpError = (statusCode, message) => {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+};
+
+const handleControllerError = (res, error, fallbackMessage) => {
+  const statusCode = error.statusCode || 500;
+  return res.status(statusCode).json({
+    success: false,
+    message: statusCode === 500 ? fallbackMessage : error.message,
+    error: error.message
+  });
+};
+
+const isRestaurantRole = async (roleId) => {
+  if (!roleId) return false;
+  const role = await Role.findOne({ Role_id: roleId });
+  return role?.role_name?.toLowerCase() === RESTAURANT_ROLE_NAME;
+};
+
+const resolveRestaurantIdForRequest = async ({ requesterIsRestaurant, requesterUserId, providedRestaurantId }) => {
+  if (requesterIsRestaurant) {
+    return requesterUserId;
+  }
+
+  if (providedRestaurantId === undefined || providedRestaurantId === null) {
+    return providedRestaurantId ?? null;
+  }
+
+  const restaurantUser = await User.findOne({ user_id: providedRestaurantId });
+  if (!restaurantUser) {
+    throw createHttpError(404, 'Provided Restaurant_id does not match any user');
+  }
+
+  const restaurantRoleMatch = await isRestaurantRole(restaurantUser.Role_id);
+  if (!restaurantRoleMatch) {
+    throw createHttpError(400, 'Provided Restaurant_id is not associated with a restaurant role');
+  }
+
+  return providedRestaurantId;
+};
+
+const ensureRestaurantOwnership = (posOrder, requesterIsRestaurant, requesterUserId) => {
+  if (requesterIsRestaurant && posOrder.Restaurant_id !== requesterUserId) {
+    throw createHttpError(403, 'You are not allowed to modify orders for another restaurant');
+  }
+};
 
 // Create POS order with automatic calculations
 const createPosOrder = async (req, res) => {
@@ -17,11 +69,18 @@ const createPosOrder = async (req, res) => {
       Dining_Option, 
       Table_id, 
       Kitchen_id, 
+      Restaurant_id,
       Status,
       Order_Status
     } = req.body;
     
     const userId = req.user.user_id;
+    const requesterIsRestaurant = await isRestaurantRole(req.user.role);
+    const restaurantIdForOrder = await resolveRestaurantIdForRequest({
+      requesterIsRestaurant,
+      requesterUserId: userId,
+      providedRestaurantId: Restaurant_id
+    });
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({
@@ -96,6 +155,7 @@ const createPosOrder = async (req, res) => {
       Dining_Option,
       Table_id,
       Kitchen_id,
+      Restaurant_id: restaurantIdForOrder,
       Order_Status: Order_Status || 'Preparing',
       Status,
       CreateBy: userId
@@ -109,11 +169,7 @@ const createPosOrder = async (req, res) => {
       data: savedPosOrder
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error creating POS order',
-      error: error.message
-    });
+    return handleControllerError(res, error, 'Error creating POS order');
   }
 };
 
@@ -128,6 +184,7 @@ const updatePosOrder = async (req, res) => {
       Dining_Option, 
       Table_id, 
       Kitchen_id, 
+      Restaurant_id,
       Status,
       Order_Status 
     } = req.body;
@@ -149,6 +206,9 @@ const updatePosOrder = async (req, res) => {
       });
     }
 
+    const requesterIsRestaurant = await isRestaurantRole(req.user.role);
+    ensureRestaurantOwnership(posOrder, requesterIsRestaurant, req.user.user_id);
+
     // Update fields if provided
     if (items !== undefined) {
       const normalizedItems = items.map((item) => ({
@@ -165,6 +225,14 @@ const updatePosOrder = async (req, res) => {
     if (Kitchen_id !== undefined) posOrder.Kitchen_id = Kitchen_id;
     if (Status !== undefined) posOrder.Status = Status;
     if (Order_Status !== undefined) posOrder.Order_Status = Order_Status;
+    if (Restaurant_id !== undefined || requesterIsRestaurant) {
+      const resolvedRestaurantId = await resolveRestaurantIdForRequest({
+        requesterIsRestaurant,
+        requesterUserId: req.user.user_id,
+        providedRestaurantId: Restaurant_id !== undefined ? Restaurant_id : posOrder.Restaurant_id
+      });
+      posOrder.Restaurant_id = resolvedRestaurantId;
+    }
 
     // Recalculate prices if items changed
     if (items !== undefined) {
@@ -232,11 +300,7 @@ const updatePosOrder = async (req, res) => {
       data: updatedPosOrder
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error updating POS order',
-      error: error.message
-    });
+    return handleControllerError(res, error, 'Error updating POS order');
   }
 };
 
@@ -456,6 +520,9 @@ const deletePosOrder = async (req, res) => {
       });
     }
 
+    const requesterIsRestaurant = await isRestaurantRole(req.user.role);
+    ensureRestaurantOwnership(posOrder, requesterIsRestaurant, req.user.user_id);
+
     await Pos_Point_sales_Order.deleteOne({ POS_Order_id: parseInt(id) });
     
     res.status(200).json({
@@ -463,11 +530,7 @@ const deletePosOrder = async (req, res) => {
       message: 'POS order deleted successfully'
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error deleting POS order',
-      error: error.message
-    });
+    return handleControllerError(res, error, 'Error deleting POS order');
   }
 };
 
@@ -491,6 +554,9 @@ const updatePosOrderItemStatus = async (req, res) => {
         message: 'POS order not found'
       });
     }
+
+    const requesterIsRestaurant = await isRestaurantRole(req.user.role);
+    ensureRestaurantOwnership(posOrder, requesterIsRestaurant, req.user.user_id);
 
     const targetItem = posOrder.items.find(item => parseInt(item.item_id) === parseInt(item_id));
     if (!targetItem) {
@@ -518,11 +584,7 @@ const updatePosOrderItemStatus = async (req, res) => {
       data: updatedOrder
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error updating POS order item',
-      error: error.message
-    });
+    return handleControllerError(res, error, 'Error updating POS order item');
   }
 };
 
@@ -540,6 +602,9 @@ const updatePosOrderStatus = async (req, res) => {
       });
     }
 
+    const requesterIsRestaurant = await isRestaurantRole(req.user.role);
+    ensureRestaurantOwnership(posOrder, requesterIsRestaurant, req.user.user_id);
+
     posOrder.Order_Status = Order_Status;
     posOrder.UpdatedBy = userId;
     posOrder.UpdatedAt = new Date();
@@ -552,11 +617,7 @@ const updatePosOrderStatus = async (req, res) => {
       data: updatedOrder
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error updating POS order status',
-      error: error.message
-    });
+    return handleControllerError(res, error, 'Error updating POS order status');
   }
 };
 

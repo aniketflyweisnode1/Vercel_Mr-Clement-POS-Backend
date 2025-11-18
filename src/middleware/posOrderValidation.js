@@ -58,6 +58,10 @@ const validateCreatePosOrder = [
     .optional()
     .isNumeric()
     .withMessage('Kitchen ID must be a number'),
+  body('Restaurant_id')
+    .optional()
+    .isNumeric()
+    .withMessage('Restaurant ID must be a number'),
   body('Status')
     .optional()
     .isBoolean()
@@ -127,6 +131,10 @@ const validateUpdatePosOrder = [
     .optional()
     .isNumeric()
     .withMessage('Kitchen ID must be a number'),
+  body('Restaurant_id')
+    .optional()
+    .isNumeric()
+    .withMessage('Restaurant ID must be a number'),
   body('Status')
     .optional()
     .isBoolean()

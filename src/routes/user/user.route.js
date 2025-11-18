@@ -8,6 +8,7 @@ const {
   deleteUser,
   softDeleteUser,
   getUserByAuth,
+  getEmployeesByRestaurantId,
   logout
 } = require('../../controllers/User.Controller.js');
 const {
@@ -58,6 +59,9 @@ router.delete('/delete/:id', auth, deleteUser);
 
 // Soft delete user (deactivate)
 router.patch('/:id/deactivate', auth, softDeleteUser);
+
+// Get employees by restaurant ID
+router.get('/employees/:restaurantId', auth, getEmployeesByRestaurantId);
 
 // Authentication routes
 router.post('/login', validateLogin, handleValidationErrors, loginUser);
