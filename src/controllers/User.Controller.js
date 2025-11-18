@@ -32,6 +32,15 @@ const createUser = async (req, res) => {
       Status
     } = req.body;
     
+    // Check if email already exists
+    const existingUser = await User.findOne({ email: email?.toLowerCase().trim() });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email already exists',
+        error: `A user with email "${email}" already exists`
+      });
+    }
 
     // Generate unique employee ID
     const Employee_id = await generateEmployeeId();
@@ -107,6 +116,25 @@ const createUser = async (req, res) => {
       data: userResponse
     });
   } catch (error) {
+    // Handle duplicate key error (email or Employee_id)
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      const value = error.keyValue[field];
+      let message = `${field} already exists`;
+      
+      if (field === 'email') {
+        message = `Email "${value}" is already registered`;
+      } else if (field === 'Employee_id') {
+        message = `Employee ID "${value}" already exists`;
+      }
+      
+      return res.status(400).json({
+        success: false,
+        message: message,
+        error: message
+      });
+    }
+    
     res.status(500).json({
       success: false,
       message: 'Error creating user',
@@ -139,6 +167,23 @@ const updateUser = async (req, res) => {
         success: false,
         message: 'User not found'
       });
+    }
+
+    // Check if email is being updated and if it already exists (excluding current user)
+    if (updateData.email) {
+      const emailToCheck = updateData.email.toLowerCase().trim();
+      const existingUserWithEmail = await User.findOne({ 
+        email: emailToCheck,
+        user_id: { $ne: parseInt(id) } // Exclude current user
+      });
+      
+      if (existingUserWithEmail) {
+        return res.status(400).json({
+          success: false,
+          message: 'Email already exists',
+          error: `A user with email "${updateData.email}" already exists`
+        });
+      }
     }
 
     // Update fields
@@ -213,6 +258,25 @@ const updateUser = async (req, res) => {
       data: userResponse
     });
   } catch (error) {
+    // Handle duplicate key error (email or Employee_id)
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      const value = error.keyValue[field];
+      let message = `${field} already exists`;
+      
+      if (field === 'email') {
+        message = `Email "${value}" is already registered`;
+      } else if (field === 'Employee_id') {
+        message = `Employee ID "${value}" already exists`;
+      }
+      
+      return res.status(400).json({
+        success: false,
+        message: message,
+        error: message
+      });
+    }
+    
     res.status(500).json({
       success: false,
       message: 'Error updating user',

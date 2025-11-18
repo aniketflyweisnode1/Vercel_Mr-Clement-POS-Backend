@@ -9,6 +9,11 @@ const createStoreDetails = async (req, res) => {
       address,
       email,
       phone,
+      store_name,
+      currency,
+      QR_status,
+      order_via_QR_status,
+      feedback_collecting_status,
       Status
     } = req.body;
 
@@ -17,6 +22,11 @@ const createStoreDetails = async (req, res) => {
       address,
       email,
       phone,
+      store_name,
+      currency,
+      QR_status,
+      order_via_QR_status,
+      feedback_collecting_status,
       Status: Status !== undefined ? Status : true,
       CreateBy: req.user?.user_id || null
     });

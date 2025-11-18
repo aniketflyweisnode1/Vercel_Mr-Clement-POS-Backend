@@ -27,6 +27,27 @@ const storeDetailsSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
+  store_name: {
+    type: String,
+    trim: true
+  },
+  currency: {
+    type: String,
+    default: "USD",
+    trim: true
+  },
+  QR_status: {
+    type: Boolean,
+    default: false
+  },
+  order_via_QR_status: {
+    type: Boolean,
+    default: false
+  },
+  feedback_collecting_status: {
+    type: Boolean,
+    default: false
+  },
   Status: {
     type: Boolean,
     default: true
