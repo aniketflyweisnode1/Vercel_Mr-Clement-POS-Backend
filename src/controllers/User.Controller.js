@@ -31,7 +31,7 @@ const createUser = async (req, res) => {
       isLoginPermission,
       Status
     } = req.body;
-    
+
     // Check if email already exists
     const existingUser = await User.findOne({ email: email?.toLowerCase().trim() });
     if (existingUser) {
@@ -69,7 +69,7 @@ const createUser = async (req, res) => {
     });
 
     const savedUser = await user.save();
-    
+
     // Check if role = 2 and create Permissions_type_Map_with_Employee
     if (Role_id === 2) {
       try {
@@ -85,7 +85,7 @@ const createUser = async (req, res) => {
         // Continue with user creation even if permission mapping fails
       }
     }
-    
+
     // Manually fetch related data
     const [responsibility, role, language, country, state, city, createByUser] = await Promise.all([
       Responsibility.findOne({ Responsibility_id: savedUser.Responsibility_id }),
@@ -109,7 +109,7 @@ const createUser = async (req, res) => {
 
     // Remove password from response
     delete userResponse.password;
-    
+
     res.status(201).json({
       success: true,
       message: 'User created successfully',
@@ -121,20 +121,20 @@ const createUser = async (req, res) => {
       const field = Object.keys(error.keyPattern)[0];
       const value = error.keyValue[field];
       let message = `${field} already exists`;
-      
+
       if (field === 'email') {
         message = `Email "${value}" is already registered`;
       } else if (field === 'Employee_id') {
         message = `Employee ID "${value}" already exists`;
       }
-      
+
       return res.status(400).json({
         success: false,
         message: message,
         error: message
       });
     }
-    
+
     res.status(500).json({
       success: false,
       message: 'Error creating user',
@@ -143,6 +143,139 @@ const createUser = async (req, res) => {
   }
 };
 
+const createEmployee = async (req, res) => {
+  try {
+    const {
+      Name,
+      last_name,
+      Responsibility_id,
+      Role_id,
+      Language_id,
+      Country_id,
+      State_id,
+      password,
+      City_id,
+      email,
+      phone,
+      Permissions_type_id,
+      gender,
+      user_image,
+      OnboardingDate,
+      yearsWithus,
+      isLoginPermission,
+      Status
+    } = req.body;
+
+    // Check if email already exists
+    const existingUser = await User.findOne({ email: email?.toLowerCase().trim() });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email already exists',
+        error: `A user with email "${email}" already exists`
+      });
+    }
+
+    // Generate unique employee ID
+    const Employee_id = await generateEmployeeId();
+
+    const user = new User({
+      Name,
+      last_name,
+      Responsibility_id,
+      Role_id,
+      Language_id,
+      Country_id,
+      State_id,
+      City_id,
+      Employee_id,
+      email,
+      phone,
+      password,
+      gender,
+      user_image,
+      OnboardingDate,
+      yearsWithus,
+      isLoginPermission,
+      Permissions_type_id,
+      Status,
+      CreateBy: req.user?.user_id || null
+    });
+
+    const savedUser = await user.save();
+
+    // Check if role = 2 and create Permissions_type_Map_with_Employee
+    if (Role_id === 2) {
+      try {
+        const permissionsTypeMap = new Permissions_type_Map_with_Employee({
+          Permissions_type_id: Permissions_type_id, // Default permission type ID, you can modify this as needed
+          user_id: savedUser.user_id,
+          Status: true,
+          CreateBy: req.user?.user_id || savedUser.user_id
+        });
+        await permissionsTypeMap.save();
+      } catch (permissionError) {
+        console.error('Error creating permissions type map:', permissionError);
+        // Continue with user creation even if permission mapping fails
+      }
+    }
+
+    // Manually fetch related data
+    const [responsibility, role, language, country, state, city, createByUser] = await Promise.all([
+      Responsibility.findOne({ Responsibility_id: savedUser.Responsibility_id }),
+      Role.findOne({ Role_id: savedUser.Role_id }),
+      Language.findOne({ Language_id: savedUser.Language_id }),
+      Country.findOne({ Country_id: savedUser.Country_id }),
+      State.findOne({ State_id: savedUser.State_id }),
+      City.findOne({ City_id: savedUser.City_id }),
+      savedUser.CreateBy ? User.findOne({ user_id: savedUser.CreateBy }) : null
+    ]);
+
+    // Create response object with populated data
+    const userResponse = savedUser.toObject();
+    userResponse.Responsibility_id = responsibility ? { Responsibility_id: responsibility.Responsibility_id, Responsibility_name: responsibility.Responsibility_name } : null;
+    userResponse.Role_id = role ? { Role_id: role.Role_id, role_name: role.role_name } : null;
+    userResponse.Language_id = language ? { Language_id: language.Language_id, Language_name: language.Language_name } : null;
+    userResponse.Country_id = country ? { Country_id: country.Country_id, Country_name: country.Country_name, code: country.code } : null;
+    userResponse.State_id = state ? { State_id: state.State_id, state_name: state.state_name, Code: state.Code } : null;
+    userResponse.City_id = city ? { City_id: city.City_id, City_name: city.City_name, Code: city.Code } : null;
+    userResponse.CreateBy = createByUser ? { user_id: createByUser.user_id, Name: createByUser.Name, email: createByUser.email } : null;
+
+    // Remove password from response
+    delete userResponse.password;
+
+    res.status(201).json({
+      success: true,
+      message: 'User created successfully',
+      data: userResponse
+    });
+  } catch (error) {
+    // Handle duplicate key error (email or Employee_id)
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      const value = error.keyValue[field];
+      let message = `${field} already exists`;
+
+      if (field === 'email') {
+        message = `Email "${value}" is already registered`;
+      } else if (field === 'Employee_id') {
+        message = `Employee ID "${value}" already exists`;
+      }
+
+      return res.status(400).json({
+        success: false,
+        message: message,
+        error: message
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Error creating user',
+      error: error.message
+    });
+  }
+};
 // Update User
 const updateUser = async (req, res) => {
   try {
@@ -172,11 +305,11 @@ const updateUser = async (req, res) => {
     // Check if email is being updated and if it already exists (excluding current user)
     if (updateData.email) {
       const emailToCheck = updateData.email.toLowerCase().trim();
-      const existingUserWithEmail = await User.findOne({ 
+      const existingUserWithEmail = await User.findOne({
         email: emailToCheck,
         user_id: { $ne: parseInt(id) } // Exclude current user
       });
-      
+
       if (existingUserWithEmail) {
         return res.status(400).json({
           success: false,
@@ -225,7 +358,7 @@ const updateUser = async (req, res) => {
     user.UpdatedAt = new Date();
 
     const updatedUser = await user.save();
-    
+
     // Manually fetch related data
     const [responsibility, role, language, country, state, city, createByUser, updatedByUser] = await Promise.all([
       Responsibility.findOne({ Responsibility_id: updatedUser.Responsibility_id }),
@@ -251,7 +384,7 @@ const updateUser = async (req, res) => {
 
     // Remove password from response
     delete userResponse.password;
-    
+
     res.status(200).json({
       success: true,
       message: 'User updated successfully',
@@ -263,20 +396,20 @@ const updateUser = async (req, res) => {
       const field = Object.keys(error.keyPattern)[0];
       const value = error.keyValue[field];
       let message = `${field} already exists`;
-      
+
       if (field === 'email') {
         message = `Email "${value}" is already registered`;
       } else if (field === 'Employee_id') {
         message = `Employee ID "${value}" already exists`;
       }
-      
+
       return res.status(400).json({
         success: false,
         message: message,
         error: message
       });
     }
-    
+
     res.status(500).json({
       success: false,
       message: 'Error updating user',
@@ -289,9 +422,9 @@ const updateUser = async (req, res) => {
 const getUserById = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const user = await User.findOne({ user_id: parseInt(id) });
-    
+
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -386,9 +519,9 @@ const getAllUsers = async (req, res) => {
 const getUserByAuth = async (req, res) => {
   try {
     const userId = req.user.user_id;
-    
+
     const user = await User.findOne({ user_id: userId });
-    
+
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -581,7 +714,7 @@ const logout = async (req, res) => {
   try {
     // In a stateless JWT system, logout is typically handled client-side
     // by removing the token. However, we can implement a blacklist if needed.
-    
+
     res.status(200).json({
       success: true,
       message: 'Logout successful'
@@ -606,5 +739,6 @@ module.exports = {
   deleteUser,
   softDeleteUser,
   getEmployeesByRestaurantId,
-  logout
+  logout,
+  createEmployee
 };

@@ -190,6 +190,8 @@ const validateUpdateUser = [
     .withMessage('Status must be a boolean value')
 ];
 
+const validateCreateEmployee = validateCreateUser;
+
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -204,6 +206,7 @@ const handleValidationErrors = (req, res, next) => {
 
 module.exports = {
   validateCreateUser,
+  validateCreateEmployee,
   validateUpdateUser,
   handleValidationErrors
 };

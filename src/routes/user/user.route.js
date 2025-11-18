@@ -9,7 +9,8 @@ const {
   softDeleteUser,
   getUserByAuth,
   getEmployeesByRestaurantId,
-  logout
+  logout,
+  createEmployee
 } = require('../../controllers/User.Controller.js');
 const {
   loginUser,
@@ -23,6 +24,7 @@ const {
 const {
   validateCreateUser,
   validateUpdateUser, 
+  validateCreateEmployee,
   handleValidationErrors
 } = require('../../middleware/userValidation.js');
 const {
@@ -59,6 +61,9 @@ router.delete('/delete/:id', auth, deleteUser);
 
 // Soft delete user (deactivate)
 router.patch('/:id/deactivate', auth, softDeleteUser);
+
+
+router.post('/createEmployee', auth, validateCreateEmployee, handleValidationErrors, createEmployee);
 
 // Get employees by restaurant ID
 router.get('/employees/:restaurantId', auth, getEmployeesByRestaurantId);
