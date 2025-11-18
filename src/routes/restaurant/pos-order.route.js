@@ -4,6 +4,8 @@ const { auth } = require('../../middleware/authMiddleware');
 const {
   validateCreatePosOrder,
   validateUpdatePosOrder,
+  validateUpdatePosOrderStatus,
+  validateUpdatePosOrderItemStatus,
   handleValidationErrors
 } = require('../../middleware/posOrderValidation');
 const {
@@ -12,7 +14,9 @@ const {
   getPosOrderById,
   getAllPosOrders,
   getPosOrdersByAuth,
-  deletePosOrder
+  deletePosOrder,
+  updatePosOrderItemStatus,
+  updatePosOrderStatus
 } = require('../../controllers/Pos_Point_sales_Order.Controller');
 
 // Create POS order (with auth)
@@ -20,6 +24,12 @@ router.post('/create', auth, validateCreatePosOrder, handleValidationErrors, cre
 
 // Update POS order (with auth)
 router.put('/update', auth, validateUpdatePosOrder, handleValidationErrors, updatePosOrder);
+
+// Update POS order status
+router.patch('/update-status', auth, validateUpdatePosOrderStatus, handleValidationErrors, updatePosOrderStatus);
+
+// Update POS order item status
+router.patch('/update-item-status', auth, validateUpdatePosOrderItemStatus, handleValidationErrors, updatePosOrderItemStatus);
 
 // Get POS order by ID (with auth)
 router.get('/getbyid/:id', auth, getPosOrderById);

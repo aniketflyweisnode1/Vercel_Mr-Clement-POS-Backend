@@ -11,7 +11,17 @@ const posPointSalesOrderSchema = new mongoose.Schema({
     item_id: { type: Number, ref: 'Items', required: true },
     item_Quentry: { type: Number, required: true, min: 1 },
     item_Addons_id: { type: Number, ref: 'item_Addons' },
-    item_Variants_id: { type: Number, ref: 'item_Variants' }
+    item_Variants_id: { type: Number, ref: 'item_Variants' },
+    item_status: {
+      type: String,
+      enum: ['Preparing', 'Served', 'Cancelled'],
+      default: 'Preparing'
+    },
+    item_size: {
+      type: String,
+      default: null,
+      trim: true
+    }
   }],
   Tax: {
     type: Number,
@@ -27,6 +37,11 @@ const posPointSalesOrderSchema = new mongoose.Schema({
     type: Number,
     required: true,
     min: 0
+  },
+  Order_Status: {
+    type: String,
+    enum: ['Preparing', 'Served', 'Cancelled'],
+    default: 'Preparing'
   },
   Customer_id: {
     type: Number,

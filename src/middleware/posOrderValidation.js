@@ -27,6 +27,14 @@ const validateCreatePosOrder = [
     .optional()
     .isNumeric()
     .withMessage('Item variant ID must be a number'),
+  body('items.*.item_status')
+    .optional()
+    .isIn(['Preparing', 'Served', 'Cancelled'])
+    .withMessage('Item status must be one of: Preparing, Served, Cancelled'),
+  body('items.*.item_size')
+    .optional()
+    .isString()
+    .withMessage('Item size must be a string'),
   body('Tax')
     .notEmpty()
     .withMessage('Tax is required')
@@ -53,7 +61,11 @@ const validateCreatePosOrder = [
   body('Status')
     .optional()
     .isBoolean()
-    .withMessage('Status must be a boolean value')
+    .withMessage('Status must be a boolean value'),
+  body('Order_Status')
+    .optional()
+    .isIn(['Preparing', 'Served', 'Cancelled'])
+    .withMessage('Order status must be one of: Preparing, Served, Cancelled')
 ];
 
 // Validation rules for updating POS order
@@ -85,6 +97,14 @@ const validateUpdatePosOrder = [
     .optional()
     .isNumeric()
     .withMessage('Item variant ID must be a number'),
+  body('items.*.item_status')
+    .optional()
+    .isIn(['Preparing', 'Served', 'Cancelled'])
+    .withMessage('Item status must be one of: Preparing, Served, Cancelled'),
+  body('items.*.item_size')
+    .optional()
+    .isString()
+    .withMessage('Item size must be a string'),
   body('Tax')
     .optional()
     .isNumeric()
@@ -110,7 +130,45 @@ const validateUpdatePosOrder = [
   body('Status')
     .optional()
     .isBoolean()
-    .withMessage('Status must be a boolean value')
+    .withMessage('Status must be a boolean value'),
+  body('Order_Status')
+    .optional()
+    .isIn(['Preparing', 'Served', 'Cancelled'])
+    .withMessage('Order status must be one of: Preparing, Served, Cancelled')
+];
+
+const validateUpdatePosOrderStatus = [
+  body('id')
+    .notEmpty()
+    .withMessage('POS order ID is required')
+    .isNumeric()
+    .withMessage('POS order ID must be a number'),
+  body('Order_Status')
+    .notEmpty()
+    .withMessage('Order status is required')
+    .isIn(['Preparing', 'Served', 'Cancelled'])
+    .withMessage('Order status must be one of: Preparing, Served, Cancelled')
+];
+
+const validateUpdatePosOrderItemStatus = [
+  body('id')
+    .notEmpty()
+    .withMessage('POS order ID is required')
+    .isNumeric()
+    .withMessage('POS order ID must be a number'),
+  body('item_id')
+    .notEmpty()
+    .withMessage('Item ID is required')
+    .isNumeric()
+    .withMessage('Item ID must be a number'),
+  body('item_status')
+    .optional()
+    .isIn(['Preparing', 'Served', 'Cancelled'])
+    .withMessage('Item status must be one of: Preparing, Served, Cancelled'),
+  body('item_size')
+    .optional()
+    .isString()
+    .withMessage('Item size must be a string')
 ];
 
 // Handle validation errors
@@ -129,5 +187,7 @@ const handleValidationErrors = (req, res, next) => {
 module.exports = {
   validateCreatePosOrder,
   validateUpdatePosOrder,
+  validateUpdatePosOrderStatus,
+  validateUpdatePosOrderItemStatus,
   handleValidationErrors
 };

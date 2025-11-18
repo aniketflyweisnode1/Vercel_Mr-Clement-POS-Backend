@@ -17,7 +17,8 @@ const createPosOrder = async (req, res) => {
       Dining_Option, 
       Table_id, 
       Kitchen_id, 
-      Status 
+      Status,
+      Order_Status
     } = req.body;
     
     const userId = req.user.user_id;
@@ -30,9 +31,14 @@ const createPosOrder = async (req, res) => {
     }
 
     let totalSubTotal = 0;
+    const normalizedItems = items.map((item) => ({
+      ...item,
+      item_status: item.item_status || 'Preparing',
+      item_size: item.item_size || null
+    }));
 
     // Validate and calculate prices for each item
-    for (const itemData of items) {
+    for (const itemData of normalizedItems) {
       const { item_id, item_Quentry, item_Addons_id, item_Variants_id } = itemData;
       
       if (!item_id || !item_Quentry) {
@@ -82,7 +88,7 @@ const createPosOrder = async (req, res) => {
     const Total = totalSubTotal + Tax;
 
     const posOrder = new Pos_Point_sales_Order({
-      items,
+      items: normalizedItems,
       Tax,
       SubTotal: totalSubTotal,
       Total,
@@ -90,6 +96,7 @@ const createPosOrder = async (req, res) => {
       Dining_Option,
       Table_id,
       Kitchen_id,
+      Order_Status: Order_Status || 'Preparing',
       Status,
       CreateBy: userId
     });
@@ -121,7 +128,8 @@ const updatePosOrder = async (req, res) => {
       Dining_Option, 
       Table_id, 
       Kitchen_id, 
-      Status 
+      Status,
+      Order_Status 
     } = req.body;
     
     const userId = req.user.user_id;
@@ -142,13 +150,21 @@ const updatePosOrder = async (req, res) => {
     }
 
     // Update fields if provided
-    if (items !== undefined) posOrder.items = items;
+    if (items !== undefined) {
+      const normalizedItems = items.map((item) => ({
+        ...item,
+        item_status: item.item_status || 'Preparing',
+        item_size: item.item_size || null
+      }));
+      posOrder.items = normalizedItems;
+    }
     if (Tax !== undefined) posOrder.Tax = Tax;
     if (Customer_id !== undefined) posOrder.Customer_id = Customer_id;
     if (Dining_Option !== undefined) posOrder.Dining_Option = Dining_Option;
     if (Table_id !== undefined) posOrder.Table_id = Table_id;
     if (Kitchen_id !== undefined) posOrder.Kitchen_id = Kitchen_id;
     if (Status !== undefined) posOrder.Status = Status;
+    if (Order_Status !== undefined) posOrder.Order_Status = Order_Status;
 
     // Recalculate prices if items changed
     if (items !== undefined) {
@@ -455,11 +471,102 @@ const deletePosOrder = async (req, res) => {
   }
 };
 
+// Update POS order item status/size
+const updatePosOrderItemStatus = async (req, res) => {
+  try {
+    const { id, item_id, item_status, item_size } = req.body;
+    const userId = req.user.user_id;
+
+    if (!id || !item_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'POS order ID and item ID are required'
+      });
+    }
+
+    const posOrder = await Pos_Point_sales_Order.findOne({ POS_Order_id: parseInt(id) });
+    if (!posOrder) {
+      return res.status(404).json({
+        success: false,
+        message: 'POS order not found'
+      });
+    }
+
+    const targetItem = posOrder.items.find(item => parseInt(item.item_id) === parseInt(item_id));
+    if (!targetItem) {
+      return res.status(404).json({
+        success: false,
+        message: 'Item not found in this order'
+      });
+    }
+
+    if (item_status !== undefined) {
+      targetItem.item_status = item_status;
+    }
+    if (item_size !== undefined) {
+      targetItem.item_size = item_size;
+    }
+
+    posOrder.UpdatedBy = userId;
+    posOrder.UpdatedAt = new Date();
+
+    const updatedOrder = await posOrder.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'POS order item updated successfully',
+      data: updatedOrder
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error updating POS order item',
+      error: error.message
+    });
+  }
+};
+
+// Update POS Order Status only
+const updatePosOrderStatus = async (req, res) => {
+  try {
+    const { id, Order_Status } = req.body;
+    const userId = req.user.user_id;
+
+    const posOrder = await Pos_Point_sales_Order.findOne({ POS_Order_id: parseInt(id) });
+    if (!posOrder) {
+      return res.status(404).json({
+        success: false,
+        message: 'POS order not found'
+      });
+    }
+
+    posOrder.Order_Status = Order_Status;
+    posOrder.UpdatedBy = userId;
+    posOrder.UpdatedAt = new Date();
+
+    const updatedOrder = await posOrder.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'POS order status updated successfully',
+      data: updatedOrder
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error updating POS order status',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   createPosOrder,
   updatePosOrder,
   getPosOrderById,
   getAllPosOrders,
   getPosOrdersByAuth,
-  deletePosOrder
+  deletePosOrder,
+  updatePosOrderItemStatus,
+  updatePosOrderStatus
 };
