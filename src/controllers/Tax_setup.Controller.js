@@ -7,6 +7,7 @@ const createTaxSetup = async (req, res) => {
     const {
       title,
       rate,
+      servicecharge,
       type,
       Status
     } = req.body;
@@ -14,6 +15,7 @@ const createTaxSetup = async (req, res) => {
     const taxSetup = new Tax_setup({
       title,
       rate,
+      servicecharge,
       type,
       Status: Status !== undefined ? Status : true,
       CreateBy: req.user?.user_id || null
@@ -187,11 +189,11 @@ const getTaxSetupByAuth = async (req, res) => {
       Status: true
     };
     
-    // Add rate filter if servicecharge query parameter is provided
+    // Add servicecharge filter if servicecharge query parameter is provided
     if (servicecharge !== undefined && servicecharge !== null && servicecharge !== '') {
-      const rateValue = parseFloat(servicecharge);
-      if (!isNaN(rateValue)) {
-        filter.rate = rateValue;
+      const servicechargeValue = parseFloat(servicecharge);
+      if (!isNaN(servicechargeValue)) {
+        filter.servicecharge = servicechargeValue;
       }
     }
     

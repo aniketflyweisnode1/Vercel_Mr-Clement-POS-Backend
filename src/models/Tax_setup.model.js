@@ -17,6 +17,11 @@ const taxSetupSchema = new mongoose.Schema({
     required: true,
     min: 0
   },
+  servicecharge: {
+    type: Number,
+    default: 10.0,
+    min: 0
+  },
   type: {
     type: String,
     required: true,
