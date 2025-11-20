@@ -777,7 +777,6 @@ const getOrderHistoryByAuth = async (req, res) => {
 // Weekly orders summary for chart
 const getWeeklyOrdersSummary = async (req, res) => {
   try {
-    console.log("working")
     const { employee_id } = req.query;
 
     const now = new Date();
@@ -865,6 +864,50 @@ const getWeeklyOrdersSummary = async (req, res) => {
 
     const totalOrders = employeeAggregation.reduce((sum, item) => sum + item.orders, 0);
 
+    const uniqueCustomersAgg = await Quick_Order.aggregate([
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: '$client_mobile_no'
+        }
+      },
+      { $count: 'uniqueCustomers' }
+    ]);
+    const totalCustomers = uniqueCustomersAgg[0]?.uniqueCustomers || 0;
+
+    const totalOrdersServed = await Quick_Order.countDocuments({
+      ...matchQuery,
+      Order_Status: 'Served'
+    });
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(todayStart);
+    todayEnd.setDate(todayEnd.getDate() + 1);
+
+    const todayMatchQuery = {
+      ...matchQuery,
+      CreateAt: {
+        $gte: todayStart,
+        $lt: todayEnd
+      }
+    };
+
+    const firstOrderToday = await Quick_Order.findOne(todayMatchQuery)
+      .sort({ CreateAt: 1 })
+      .select({ CreateAt: 1 })
+      .lean();
+    const lastOrderToday = await Quick_Order.findOne(todayMatchQuery)
+      .sort({ CreateAt: -1 })
+      .select({ CreateAt: 1 })
+      .lean();
+
+    let todayWorkingHours = 0;
+    if (firstOrderToday && lastOrderToday) {
+      const diffMs = new Date(lastOrderToday.CreateAt) - new Date(firstOrderToday.CreateAt);
+      todayWorkingHours = parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2));
+    }
+
     res.status(200).json({
       success: true,
       message: 'Weekly orders summary retrieved successfully',
@@ -878,7 +921,12 @@ const getWeeklyOrdersSummary = async (req, res) => {
         },
         chart: baseWeekData,
         employees: employeeTotals,
-        total_orders: totalOrders
+        total_orders: totalOrders,
+        summary: {
+          totalCustomer: totalCustomers,
+          totalOrderServed: totalOrdersServed,
+          todayWorkingHour: todayWorkingHours
+        }
       }
     });
   } catch (error) {
