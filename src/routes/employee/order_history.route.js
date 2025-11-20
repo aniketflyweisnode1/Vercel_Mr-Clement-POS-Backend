@@ -8,7 +8,8 @@ const {
   getOrderHistoryByTable,
   getOrderHistoryByClientMobileNo,
   getOrderHistoryByEmployeeId,
-  getOrderHistoryByAuth
+  getOrderHistoryByAuth,
+  getWeeklyOrdersSummary
 } = require('../../controllers/Order_History.Controller');
 
 // Order History routes
@@ -19,5 +20,6 @@ router.get('/getbytable/:table_id', auth, getOrderHistoryByTable);
 router.get('/getbyclientmobile/:mobile_no', auth, getOrderHistoryByClientMobileNo);
 router.get('/getbyemployeeid/:employee_id', auth, getOrderHistoryByEmployeeId);
 router.get('/getbyauth', auth, getOrderHistoryByAuth);
+router.get('/weekly-summary', auth, getWeeklyOrdersSummary);
 
 module.exports = router;

@@ -774,6 +774,122 @@ const getOrderHistoryByAuth = async (req, res) => {
   }
 };
 
+// Weekly orders summary for chart
+const getWeeklyOrdersSummary = async (req, res) => {
+  try {
+    const { employee_id } = req.query;
+
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setHours(0, 0, 0, 0);
+    const weekday = startOfWeek.getDay();
+    startOfWeek.setDate(startOfWeek.getDate() - weekday);
+
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(endOfWeek.getDate() + 7);
+
+    const matchQuery = {
+      Status: true,
+      CreateAt: {
+        $gte: startOfWeek,
+        $lt: endOfWeek
+      }
+    };
+
+    if (employee_id) {
+      matchQuery.get_order_Employee_id = employee_id;
+    }
+
+    const dayKeyMap = {
+      1: { key: 'S', label: 'Sunday' },
+      2: { key: 'M', label: 'Monday' },
+      3: { key: 'T', label: 'Tuesday' },
+      4: { key: 'W', label: 'Wednesday' },
+      5: { key: 'T2', label: 'Thursday' },
+      6: { key: 'F', label: 'Friday' },
+      7: { key: 'S2', label: 'Saturday' }
+    };
+
+    const baseWeekData = Object.values(dayKeyMap).reduce((acc, day) => {
+      acc[day.key] = {
+        day: day.label,
+        orders: 0
+      };
+      return acc;
+    }, {});
+
+    const dayAggregation = await Quick_Order.aggregate([
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: { dayOfWeek: { $dayOfWeek: '$CreateAt' } },
+          orders: { $sum: 1 }
+        }
+      }
+    ]);
+
+    dayAggregation.forEach((entry) => {
+      const mapKey = dayKeyMap[entry._id.dayOfWeek]?.key;
+      if (mapKey) {
+        baseWeekData[mapKey].orders = entry.orders;
+      }
+    });
+
+    const employeeAggregation = await Quick_Order.aggregate([
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: '$get_order_Employee_id',
+          orders: { $sum: 1 }
+        }
+      },
+      { $sort: { orders: -1 } }
+    ]);
+
+    const employeeIds = employeeAggregation.map((item) => item._id).filter(Boolean);
+    const employees = await User.find({ user_id: { $in: employeeIds } })
+      .select({ user_id: 1, Name: 1 })
+      .lean();
+
+    const employeeMap = employees.reduce((acc, emp) => {
+      acc[emp.user_id] = emp;
+      return acc;
+    }, {});
+
+    const employeeTotals = employeeAggregation.map((item) => ({
+      employee_id: item._id,
+      employee_name: employeeMap[item._id]?.Name || 'Unknown Employee',
+      orders: item.orders
+    }));
+
+    const totalOrders = employeeAggregation.reduce((sum, item) => sum + item.orders, 0);
+
+    res.status(200).json({
+      success: true,
+      message: 'Weekly orders summary retrieved successfully',
+      data: {
+        week_range: {
+          start: startOfWeek,
+          end: endOfWeek
+        },
+        filter: {
+          employee_id: employee_id || null
+        },
+        chart: baseWeekData,
+        employees: employeeTotals,
+        total_orders: totalOrders
+      }
+    });
+  } catch (error) {
+    console.error('Error in getWeeklyOrdersSummary:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getOrderHistory,
   getOrderHistoryByDateRange,
@@ -781,5 +897,6 @@ module.exports = {
   getOrderHistoryByTable,
   getOrderHistoryByClientMobileNo,
   getOrderHistoryByEmployeeId,
-  getOrderHistoryByAuth
+  getOrderHistoryByAuth,
+  getWeeklyOrdersSummary
 };
