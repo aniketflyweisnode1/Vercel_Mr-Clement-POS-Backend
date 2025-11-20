@@ -777,6 +777,7 @@ const getOrderHistoryByAuth = async (req, res) => {
 // Weekly orders summary for chart
 const getWeeklyOrdersSummary = async (req, res) => {
   try {
+    console.log("working")
     const { employee_id } = req.query;
 
     const now = new Date();

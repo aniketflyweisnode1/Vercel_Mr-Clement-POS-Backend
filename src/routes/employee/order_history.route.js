@@ -20,6 +20,6 @@ router.get('/getbytable/:table_id', auth, getOrderHistoryByTable);
 router.get('/getbyclientmobile/:mobile_no', auth, getOrderHistoryByClientMobileNo);
 router.get('/getbyemployeeid/:employee_id', auth, getOrderHistoryByEmployeeId);
 router.get('/getbyauth', auth, getOrderHistoryByAuth);
-router.get('/weekly-summary', auth, getWeeklyOrdersSummary);
+router.get('/weeklysummary', getWeeklyOrdersSummary);
 
 module.exports = router;
