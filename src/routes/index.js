@@ -67,6 +67,7 @@ const supportTicketTypeRoutes = require('./restaurant/support_ticket_type.route.
 const supportTicketRoutes = require('./restaurant/support_ticket.route.js');
 const supportTicketReplyRoutes = require('./restaurant/support_ticket_reply.route.js');
 const jsonFileRoutes = require('./user/jsonFile.route.js');
+const fileuploadRoutes = require('./fileupload.js');
 
 // Use routes
 router.use('/user', userRoutes);
@@ -134,5 +135,6 @@ router.use('/restaurant/support_ticket_type', supportTicketTypeRoutes);
 router.use('/restaurant/support_ticket', supportTicketRoutes);
 router.use('/restaurant/support_ticket_reply', supportTicketReplyRoutes);
 router.use('/user/jsonFile', jsonFileRoutes);
+router.use('/fileupload', fileuploadRoutes);
 
 module.exports = router;
