@@ -2,6 +2,11 @@ const Clients = require('../models/Clients.model');
 const User = require('../models/User.model');
 const Language = require('../models/Language.model');
 const Currency = require('../models/currency.model');
+const Responsibility = require('../models/Responsibility.model');
+const Role = require('../models/Role.model');
+const Country = require('../models/Country.model');
+const State = require('../models/State.model');
+const City = require('../models/City.model');
 
 // Create Client
 const createClient = async (req, res) => {
@@ -216,6 +221,82 @@ const getClientById = async (req, res) => {
       client.currency.length > 0 ? Currency.find({ currency_id: { $in: client.currency } }) : []
     ]);
 
+    // Get all employees for this client
+    // Query employees linked to the client through client_id field or through CreateBy relationship
+    let employees = [];
+    try {
+      // First, try to find employees with client_id field (if it exists in User model)
+      employees = await User.find({ 
+        $or: [
+          { client_id: client.Clients_id },
+          { Clients_id: client.Clients_id }
+        ],
+        Status: true 
+      }).sort({ CreateAt: -1 });
+      
+      // If no employees found with client_id, try finding through CreateBy relationship
+      // (employees created by users associated with this client)
+      if (employees.length === 0 && client.CreateBy) {
+        employees = await User.find({ 
+          CreateBy: client.CreateBy,
+          Status: true 
+        }).sort({ CreateAt: -1 });
+      }
+    } catch (error) {
+      // If client_id field doesn't exist, fall back to CreateBy relationship
+      if (client.CreateBy) {
+        employees = await User.find({ 
+          CreateBy: client.CreateBy,
+          Status: true 
+        }).sort({ CreateAt: -1 });
+      }
+    }
+
+    // Populate employee data
+    const employeesResponse = await Promise.all(employees.map(async (employee) => {
+      const [responsibility, role, language, country, state, city, createByUser] = await Promise.all([
+        Responsibility.findOne({ Responsibility_id: employee.Responsibility_id }),
+        Role.findOne({ Role_id: employee.Role_id }),
+        Language.findOne({ Language_id: employee.Language_id }),
+        Country.findOne({ Country_id: employee.Country_id }),
+        State.findOne({ State_id: employee.State_id }),
+        City.findOne({ City_id: employee.City_id }),
+        employee.CreateBy ? User.findOne({ user_id: employee.CreateBy }) : null
+      ]);
+
+      const employeeObj = employee.toObject();
+      employeeObj.Responsibility_id = responsibility ? { Responsibility_id: responsibility.Responsibility_id, Responsibility_name: responsibility.Responsibility_name } : null;
+      employeeObj.Role_id = role ? { Role_id: role.Role_id, role_name: role.role_name } : null;
+      employeeObj.Language_id = language ? { Language_id: language.Language_id, Language_name: language.Language_name } : null;
+      employeeObj.Country_id = country ? { Country_id: country.Country_id, Country_name: country.Country_name, code: country.code } : null;
+      employeeObj.State_id = state ? { State_id: state.State_id, state_name: state.state_name, Code: state.Code } : null;
+      employeeObj.City_id = city ? { City_id: city.City_id, City_name: city.City_name, Code: city.Code } : null;
+      employeeObj.CreateBy = createByUser ? { user_id: createByUser.user_id, Name: createByUser.Name, email: createByUser.email } : null;
+
+      delete employeeObj.password;
+      return employeeObj;
+    }));
+
+    // Count employees by Role
+    const employeeCountByRole = {};
+    employees.forEach(employee => {
+      const roleId = employee.Role_id;
+      if (!employeeCountByRole[roleId]) {
+        employeeCountByRole[roleId] = 0;
+      }
+      employeeCountByRole[roleId]++;
+    });
+
+    // Get role details and create count array
+    const roleIds = Object.keys(employeeCountByRole).map(id => parseInt(id));
+    const roles = await Role.find({ Role_id: { $in: roleIds } });
+    
+    const employeeCountByRoleResponse = roles.map(role => ({
+      Role_id: role.Role_id,
+      role_name: role.role_name,
+      count: employeeCountByRole[role.Role_id] || 0
+    }));
+
     // Create response object with populated data
     const clientResponse = client.toObject();
     clientResponse.CreateBy = createByUser ? 
@@ -231,6 +312,8 @@ const getClientById = async (req, res) => {
       name: curr.name,
       icon: curr.icon
     }));
+    clientResponse.Employee = employeesResponse;
+    clientResponse.EmployeeCountByRole = employeeCountByRoleResponse;
 
     // Remove password from response
     delete clientResponse.password;

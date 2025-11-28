@@ -9,6 +9,8 @@ const {
   softDeleteUser,
   getUserByAuth,
   getEmployeesByRestaurantId,
+  getEmployeesByClientId,
+  getEmployeeDetailsById,
   logout,
   createEmployee
 } = require('../../controllers/User.Controller.js');
@@ -67,6 +69,12 @@ router.post('/createEmployee', auth, validateCreateEmployee, handleValidationErr
 
 // Get employees by restaurant ID
 router.get('/employees/:restaurantId', auth, getEmployeesByRestaurantId);
+
+// Get employees by client ID - categorized by role with details, timing, and performance
+router.get('/employees/client/:clientId', auth, getEmployeesByClientId);
+
+// Get employee details by ID with Responsibility and Work Details
+router.get('/employeedetailsbyid/:id', auth, getEmployeeDetailsById);
 
 // Authentication routes
 router.post('/login', validateLogin, handleValidationErrors, loginUser);

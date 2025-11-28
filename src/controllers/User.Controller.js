@@ -6,6 +6,9 @@ const Country = require('../models/Country.model');
 const State = require('../models/State.model');
 const City = require('../models/City.model');
 const Permissions_type_Map_with_Employee = require('../models/Permissions_type_Map_with_Employee.model');
+const Clock = require('../models/Clock.model');
+const Review = require('../models/Review.model');
+const Clients = require('../models/Clients.model');
 const { generateEmployeeId } = require('../utils/employeeIdGenerator');
 
 // Create User
@@ -740,7 +743,375 @@ const logout = async (req, res) => {
   }
 };
 
+// Get Employees by Client ID - Categorized by Role with Details, Timing, and Performance
+const getEmployeesByClientId = async (req, res) => {
+  try {
+    const { clientId } = req.params;
+    const parsedClientId = parseInt(clientId);
 
+    if (!clientId || isNaN(parsedClientId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid client ID is required'
+      });
+    }
+
+    // Verify client exists
+    const client = await Clients.findOne({ Clients_id: parsedClientId });
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        message: 'Client not found'
+      });
+    }
+
+    // Get all employees for this client
+    let employees = [];
+    try {
+      // First, try to find employees with client_id field (if it exists in User model)
+      employees = await User.find({ 
+        $or: [
+          { client_id: parsedClientId },
+          { Clients_id: parsedClientId }
+        ],
+        Status: true 
+      }).sort({ CreateAt: -1 });
+      
+      // If no employees found with client_id, try finding through CreateBy relationship
+      if (employees.length === 0 && client.CreateBy) {
+        employees = await User.find({ 
+          CreateBy: client.CreateBy,
+          Status: true 
+        }).sort({ CreateAt: -1 });
+      }
+    } catch (error) {
+      // If client_id field doesn't exist, fall back to CreateBy relationship
+      if (client.CreateBy) {
+        employees = await User.find({ 
+          CreateBy: client.CreateBy,
+          Status: true 
+        }).sort({ CreateAt: -1 });
+      }
+    }
+
+    if (!employees || employees.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Employees not found for this client'
+      });
+    }
+
+    // Get all employee IDs for fetching clock and review data
+    const employeeIds = employees.map(emp => emp.user_id);
+
+    // Fetch clock records and reviews for all employees
+    const [allClocks, allReviews] = await Promise.all([
+      Clock.find({ user_id: { $in: employeeIds }, Status: true }).sort({ CreateAt: -1 }),
+      Review.find({ for_Review_id: { $in: employeeIds }, Status: true }).sort({ CreateAt: -1 })
+    ]);
+
+    // Create maps for quick lookup
+    const clocksByEmployee = {};
+    const reviewsByEmployee = {};
+    
+    allClocks.forEach(clock => {
+      if (!clocksByEmployee[clock.user_id]) {
+        clocksByEmployee[clock.user_id] = [];
+      }
+      clocksByEmployee[clock.user_id].push({
+        Clock_in_id: clock.Clock_in_id,
+        date: clock.date,
+        in_time: clock.in_time,
+        out_time: clock.out_time,
+        Status: clock.Status
+      });
+    });
+
+    allReviews.forEach(review => {
+      if (!reviewsByEmployee[review.for_Review_id]) {
+        reviewsByEmployee[review.for_Review_id] = [];
+      }
+      reviewsByEmployee[review.for_Review_id].push({
+        Review_id: review.Review_id,
+        Review_Type_id: review.Review_Type_id,
+        Review_type: review.Review_type,
+        ReviewStarCount: review.ReviewStarCount,
+        CreateAt: review.CreateAt
+      });
+    });
+
+    // Populate employee data with related information, timing, and performance
+    const employeesResponse = await Promise.all(employees.map(async (employee) => {
+      const [responsibility, role, language, country, state, city, createByUser] = await Promise.all([
+        Responsibility.findOne({ Responsibility_id: employee.Responsibility_id }),
+        Role.findOne({ Role_id: employee.Role_id }),
+        Language.findOne({ Language_id: employee.Language_id }),
+        Country.findOne({ Country_id: employee.Country_id }),
+        State.findOne({ State_id: employee.State_id }),
+        City.findOne({ City_id: employee.City_id }),
+        employee.CreateBy ? User.findOne({ user_id: employee.CreateBy }) : null
+      ]);
+
+      const employeeObj = employee.toObject();
+      employeeObj.Responsibility_id = responsibility ? { 
+        Responsibility_id: responsibility.Responsibility_id, 
+        Responsibility_name: responsibility.Responsibility_name 
+      } : null;
+      employeeObj.Role_id = role ? { 
+        Role_id: role.Role_id, 
+        role_name: role.role_name 
+      } : null;
+      employeeObj.Language_id = language ? { 
+        Language_id: language.Language_id, 
+        Language_name: language.Language_name 
+      } : null;
+      employeeObj.Country_id = country ? { 
+        Country_id: country.Country_id, 
+        Country_name: country.Country_name, 
+        code: country.code 
+      } : null;
+      employeeObj.State_id = state ? { 
+        State_id: state.State_id, 
+        state_name: state.state_name, 
+        Code: state.Code 
+      } : null;
+      employeeObj.City_id = city ? { 
+        City_id: city.City_id, 
+        City_name: city.City_name, 
+        Code: city.Code 
+      } : null;
+      employeeObj.CreateBy = createByUser ? { 
+        user_id: createByUser.user_id, 
+        Name: createByUser.Name, 
+        email: createByUser.email 
+      } : null;
+
+      // Add timing data (clock records)
+      employeeObj.timing = clocksByEmployee[employee.user_id] || [];
+
+      // Add performance data (reviews)
+      employeeObj.performance = reviewsByEmployee[employee.user_id] || [];
+
+      // Calculate average performance rating
+      const performanceRatings = reviewsByEmployee[employee.user_id] || [];
+      if (performanceRatings.length > 0) {
+        const totalRating = performanceRatings.reduce((sum, review) => sum + review.ReviewStarCount, 0);
+        employeeObj.averagePerformanceRating = (totalRating / performanceRatings.length).toFixed(2);
+      } else {
+        employeeObj.averagePerformanceRating = null;
+      }
+
+      delete employeeObj.password;
+      return employeeObj;
+    }));
+
+    // Group employees by Role
+    const employeesByRole = {};
+    employeesResponse.forEach(employee => {
+      const roleId = employee.Role_id?.Role_id || 'unknown';
+      if (!employeesByRole[roleId]) {
+        employeesByRole[roleId] = {
+          Role_id: employee.Role_id?.Role_id || null,
+          role_name: employee.Role_id?.role_name || 'Unknown Role',
+          employees: []
+        };
+      }
+      employeesByRole[roleId].employees.push(employee);
+    });
+
+    // Convert to array format
+    const categorizedEmployees = Object.values(employeesByRole).map(roleGroup => ({
+      Role_id: roleGroup.Role_id,
+      role_name: roleGroup.role_name,
+      employee_count: roleGroup.employees.length,
+      employees: roleGroup.employees
+    }));
+
+    res.status(200).json({
+      success: true,
+      message: 'Employees retrieved successfully',
+      client: {
+        Clients_id: client.Clients_id,
+        Business_Name: client.Business_Name,
+        Email: client.Email
+      },
+      total_employees: employeesResponse.length,
+      categorized_by_role: categorizedEmployees
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching employees for client',
+      error: error.message
+    });
+  }
+};
+
+// Get Employee Details by ID with Responsibility and Work Details
+const getEmployeeDetailsById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const parsedId = parseInt(id);
+
+    if (!id || isNaN(parsedId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid employee ID is required'
+      });
+    }
+
+    // Find employee
+    const employee = await User.findOne({ user_id: parsedId, Status: true });
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'Employee not found'
+      });
+    }
+
+    // Fetch Responsibility details
+    const responsibility = await Responsibility.findOne({ 
+      Responsibility_id: employee.Responsibility_id 
+    });
+
+    // Fetch all clock records for this employee
+    const clockRecords = await Clock.find({ 
+      user_id: parsedId, 
+      Status: true 
+    }).sort({ date: -1 });
+
+    // Calculate Experience from OnboardingDate
+    const onboardingDate = new Date(employee.OnboardingDate);
+    const currentDate = new Date();
+    const experienceInMs = currentDate - onboardingDate;
+    const experienceInYears = Math.floor(experienceInMs / (1000 * 60 * 60 * 24 * 365));
+    const experienceInMonths = Math.floor((experienceInMs % (1000 * 60 * 60 * 24 * 365)) / (1000 * 60 * 60 * 24 * 30));
+    const experience = {
+      years: experienceInYears,
+      months: experienceInMonths,
+      total_months: Math.floor(experienceInMs / (1000 * 60 * 60 * 24 * 30)),
+      display: `${experienceInYears} years ${experienceInMonths} months`
+    };
+
+    // Calculate Shift Timings (average in_time and out_time)
+    let shiftTimings = {
+      average_in_time: null,
+      average_out_time: null,
+      average_working_hours: null,
+      total_working_days: 0
+    };
+
+    if (clockRecords.length > 0) {
+      const validRecords = clockRecords.filter(record => record.in_time && record.out_time);
+      
+      if (validRecords.length > 0) {
+        // Calculate average in_time and out_time
+        let totalInMinutes = 0;
+        let totalOutMinutes = 0;
+        let totalWorkingHours = 0;
+
+        validRecords.forEach(record => {
+          const inTime = new Date(record.in_time);
+          const outTime = new Date(record.out_time);
+          
+          // Get hours and minutes from in_time
+          const inHours = inTime.getHours();
+          const inMinutes = inTime.getMinutes();
+          totalInMinutes += (inHours * 60) + inMinutes;
+
+          // Get hours and minutes from out_time
+          const outHours = outTime.getHours();
+          const outMinutes = outTime.getMinutes();
+          totalOutMinutes += (outHours * 60) + outMinutes;
+
+          // Calculate working hours for this day
+          const workingMs = outTime - inTime;
+          const workingHours = workingMs / (1000 * 60 * 60);
+          totalWorkingHours += workingHours;
+        });
+
+        const avgInMinutes = Math.floor(totalInMinutes / validRecords.length);
+        const avgOutMinutes = Math.floor(totalOutMinutes / validRecords.length);
+        
+        const avgInHours = Math.floor(avgInMinutes / 60);
+        const avgInMins = avgInMinutes % 60;
+        const avgOutHours = Math.floor(avgOutMinutes / 60);
+        const avgOutMins = avgOutMinutes % 60;
+
+        shiftTimings.average_in_time = `${String(avgInHours).padStart(2, '0')}:${String(avgInMins).padStart(2, '0')}`;
+        shiftTimings.average_out_time = `${String(avgOutHours).padStart(2, '0')}:${String(avgOutMins).padStart(2, '0')}`;
+        shiftTimings.average_working_hours = (totalWorkingHours / validRecords.length).toFixed(2);
+        shiftTimings.total_working_days = validRecords.length;
+      }
+    }
+
+    // Calculate Leave Information
+    // Standard leave policy: 20 days per year (can be customized)
+    const standardLeavePerYear = 20;
+    const totalLeave = Math.floor(experienceInYears * standardLeavePerYear) + 
+                       Math.floor((experienceInMonths / 12) * standardLeavePerYear);
+    
+    // Calculate taken leave (days without clock records in current year)
+    const currentYearStart = new Date(currentDate.getFullYear(), 0, 1);
+    const currentYearEnd = new Date(currentDate.getFullYear(), 11, 31, 23, 59, 59);
+    
+    // Get all working days in current year (days with clock records)
+    const workingDaysThisYear = clockRecords.filter(record => {
+      const recordDate = new Date(record.date);
+      return recordDate >= currentYearStart && recordDate <= currentYearEnd && record.in_time;
+    }).length;
+
+    // Calculate total days in current year so far
+    const daysInYearSoFar = Math.ceil((currentDate - currentYearStart) / (1000 * 60 * 60 * 24));
+    
+    // Estimate taken leave (this is a simplified calculation)
+    // In a real system, you'd have a dedicated leave model
+    const estimatedWorkingDays = Math.floor(daysInYearSoFar * 0.7); // Assume 70% working days
+    const takenLeave = Math.max(0, estimatedWorkingDays - workingDaysThisYear);
+    
+    // For more accurate calculation, you might want to track leave separately
+    // For now, we'll use a conservative estimate
+    const leaveLeft = Math.max(0, totalLeave - takenLeave);
+
+    // Prepare Work Details
+    const workDetails = {
+      OnBoardingDate: employee.OnboardingDate,
+      Experience: experience,
+      ShiftTimings: shiftTimings,
+      TotalLeave: totalLeave,
+      LeaveLeft: leaveLeft,
+      TakenLeave: takenLeave
+    };
+
+    // Prepare employee response
+    const employeeResponse = employee.toObject();
+    
+    // Add Responsibility
+    employeeResponse.Responsibility = responsibility ? {
+      Responsibility_id: responsibility.Responsibility_id,
+      Responsibility_name: responsibility.Responsibility_name
+    } : null;
+
+    // Add Work Details
+    employeeResponse.WorkDetails = workDetails;
+
+    // Remove password
+    delete employeeResponse.password;
+
+    res.status(200).json({
+      success: true,
+      message: 'Employee details retrieved successfully',
+      data: employeeResponse
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching employee details',
+      error: error.message
+    });
+  }
+};
 
 module.exports = {
   createUser,
@@ -751,6 +1122,8 @@ module.exports = {
   deleteUser,
   softDeleteUser,
   getEmployeesByRestaurantId,
+  getEmployeesByClientId,
+  getEmployeeDetailsById,
   logout,
   createEmployee
 };
