@@ -4,6 +4,9 @@ const Customer = require('../models/Customer.model');
 const Items = require('../models/Items.model');
 const Tokens = require('../models/Tokens.model');
 const Invoices = require('../models/Invoices.model');
+const Clients = require('../models/Clients.model');
+const User = require('../models/User.model');
+const Role = require('../models/Role.model');
 
 // Helper function to get date range based on period
 const getDateRange = (period) => {
@@ -450,9 +453,170 @@ const reportsOneYear = async (req, res) => {
   }
 };
 
+// Restaurant Performance API
+const restaurantPerformance = async (req, res) => {
+  try {
+    // Get restaurant ID from route parameter
+    const { id } = req.params;
+    const parsedRestaurantId = parseInt(id);
+
+    if (!id || isNaN(parsedRestaurantId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid restaurant ID is required'
+      });
+    }
+
+    // Verify restaurant user exists and has restaurant role
+    const restaurantUser = await User.findOne({ user_id: parsedRestaurantId });
+    
+    if (!restaurantUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'Restaurant not found'
+      });
+    }
+
+    const restaurantRole = await Role.findOne({ Role_id: restaurantUser.Role_id });
+    if (!restaurantRole || restaurantRole.role_name?.toLowerCase() !== 'restaurant') {
+      return res.status(400).json({
+        success: false,
+        message: 'Provided user is not associated with a restaurant role'
+      });
+    }
+
+    // Get all employees created by this restaurant
+    const employees = await User.find({ 
+      CreateBy: parsedRestaurantId, 
+      Status: true 
+    });
+    const employeeIds = employees.map(emp => emp.user_id);
+
+    // Get orders filtered by restaurant
+    const posOrderQuery = { 
+      Restaurant_id: parsedRestaurantId,
+      Status: true 
+    };
+    
+    const quickOrderQuery = { 
+      Status: true 
+    };
+    
+    if (employeeIds.length > 0) {
+      quickOrderQuery['get_order_Employee_id'] = { $in: employeeIds };
+    } else {
+      // If no employees found, return empty result for Quick Orders
+      quickOrderQuery['get_order_Employee_id'] = { $in: [-1] };
+    }
+
+    const [posOrders, quickOrders] = await Promise.all([
+      Pos_Point_sales_Order.find(posOrderQuery),
+      Quick_Order.find(quickOrderQuery)
+    ]);
+
+    // Calculate TotalSalesCount (total revenue)
+    const totalSalesCount = [...posOrders, ...quickOrders].reduce(
+      (sum, order) => sum + (order.Total || 0), 
+      0
+    );
+
+    // Calculate TotalOrderCount
+    const totalOrderCount = posOrders.length + quickOrders.length;
+
+    // Get TotalActiveClientsCount - filter clients created by restaurant or its employees
+    const clientCreators = [parsedRestaurantId, ...employeeIds];
+    const totalActiveClientsCount = await Clients.countDocuments({ 
+      CreateBy: { $in: clientCreators },
+      Status: true 
+    });
+
+    // Get customers - filter by restaurant employees
+    const customerFilter = { 
+      Status: true 
+    };
+    if (employeeIds.length > 0) {
+      customerFilter.CreateBy = { $in: employeeIds };
+    }
+    const allCustomers = await Customer.find(customerFilter);
+
+    // Calculate new customers (customers created in last 30 days)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    const newCustomerFilter = {
+      CreateAt: { $gte: thirtyDaysAgo },
+      Status: true
+    };
+    if (employeeIds.length > 0) {
+      newCustomerFilter.CreateBy = { $in: employeeIds };
+    }
+    
+    const newCustomers = await Customer.countDocuments(newCustomerFilter);
+
+    // Calculate repeat customers (customers with more than 1 order)
+    const customerOrderCounts = {};
+    
+    // Count orders per customer from POS orders
+    posOrders.forEach(order => {
+      if (order.Customer_id) {
+        customerOrderCounts[order.Customer_id] = (customerOrderCounts[order.Customer_id] || 0) + 1;
+      }
+    });
+
+    // Count orders per customer from Quick orders by matching phone to Customer_id
+    quickOrders.forEach(order => {
+      if (order.client_mobile_no) {
+        // Try to match Quick Order phone with Customer record
+        const customer = allCustomers.find(c => c.phone === order.client_mobile_no);
+        if (customer) {
+          customerOrderCounts[customer.Customer_id] = (customerOrderCounts[customer.Customer_id] || 0) + 1;
+        }
+      }
+    });
+
+    // Count repeat customers (customers with more than 1 order)
+    const repeatCustomers = Object.values(customerOrderCounts).filter(count => count > 1).length;
+
+    // Calculate Average Order Value
+    const avgOrderValue = totalOrderCount > 0 
+      ? parseFloat((totalSalesCount / totalOrderCount).toFixed(2))
+      : 0;
+
+    // Prepare response
+    const performanceData = {
+      TotalSalesCount: totalSalesCount,
+      TotalOrderCount: totalOrderCount,
+      TotalActiveClientsCount: totalActiveClientsCount,
+      getNewCustomers: newCustomers,
+      getRepeatCustomers: repeatCustomers,
+      getAvgOrderValue: avgOrderValue,
+      Chart: null,
+      Restaurant: {
+        Restaurant_id: restaurantUser.user_id,
+        Name: restaurantUser.Name,
+        email: restaurantUser.email
+      }
+    };
+
+    res.status(200).json({
+      success: true,
+      message: 'Restaurant performance data retrieved successfully',
+      data: performanceData
+    });
+  } catch (error) {
+    console.error('Error fetching restaurant performance:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching restaurant performance data',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   reportsToday,
   reportsMonth,
   reportsSixMonth,
-  reportsOneYear
+  reportsOneYear,
+  restaurantPerformance
 };

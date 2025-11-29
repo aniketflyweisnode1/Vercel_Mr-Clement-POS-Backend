@@ -28,4 +28,5 @@ router.get('/getall', auth, getAllClients);
 // Get client by auth (with auth)
 router.get('/getbyauth', auth, getClientByAuth);
 
+
 module.exports = router;
