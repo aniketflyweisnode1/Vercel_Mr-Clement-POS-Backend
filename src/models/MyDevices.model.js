@@ -16,6 +16,45 @@ const myDevicesSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
+  isActive: {
+    type: Boolean,
+    default: true
+  },
+  Devices_ModelNo: {
+    type: String,
+    default: null,
+    trim: true
+  },
+  Devices_company: {
+    type: String,
+    default: null,
+    trim: true
+  },
+  Devices_Operating_system: {
+    type: String,
+    default: null,
+    trim: true
+  },
+  timeZone: {
+    type: String,
+    default: null,
+    trim: true
+  },
+  Device_browser: {
+    type: String,
+    default: null,
+    trim: true
+  },
+  location: {
+    type: String,
+    default: null,
+    trim: true
+  },
+  IPAddress: {
+    type: String,
+    default: null,
+    trim: true
+  },
   Status: {
     type: Boolean,
     default: true

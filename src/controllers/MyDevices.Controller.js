@@ -4,13 +4,71 @@ const User = require('../models/User.model');
 // Create MyDevices
 const createMyDevices = async (req, res) => {
   try {
-    const { Name, type, Status } = req.body;
+    const { 
+      Name, 
+      type, 
+      Devices_ModelNo,
+      Devices_company,
+      Devices_Operating_system,
+      timeZone,
+      Device_browser,
+      location,
+      IPAddress,
+      Status 
+    } = req.body;
     const userId = req.user.user_id;
 
+    // Check if device already exists (by IPAddress and user)
+    let existingDevice = null;
+    if (IPAddress) {
+      existingDevice = await MyDevices.findOne({ 
+        IPAddress: IPAddress,
+        timeZone: timeZone,
+        Devices_company : Devices_company,
+        Devices_ModelNo : Devices_ModelNo,
+        CreateBy: userId 
+      });
+    }
+
+    // If device already exists, activate it and update fields
+    if (existingDevice) {
+      existingDevice.isActive = true;
+      // Update other fields if provided
+      if (Name !== undefined) existingDevice.Name = Name;
+      if (type !== undefined) existingDevice.type = type;
+      if (Devices_ModelNo !== undefined) existingDevice.Devices_ModelNo = Devices_ModelNo;
+      if (Devices_company !== undefined) existingDevice.Devices_company = Devices_company;
+      if (Devices_Operating_system !== undefined) existingDevice.Devices_Operating_system = Devices_Operating_system;
+      if (timeZone !== undefined) existingDevice.timeZone = timeZone;
+      if (Device_browser !== undefined) existingDevice.Device_browser = Device_browser;
+      if (location !== undefined) existingDevice.location = location;
+      if (Status !== undefined) existingDevice.Status = Status;
+      
+      existingDevice.UpdatedBy = userId;
+      existingDevice.UpdatedAt = new Date();
+
+      const updatedDevice = await existingDevice.save();
+      
+      return res.status(200).json({
+        success: true,
+        message: 'Device already exists. Activated and updated successfully',
+        data: updatedDevice
+      });
+    }
+
+    // If device doesn't exist, create new one
     const myDevices = new MyDevices({
       Name,
       type,
-      Status,
+      isActive: true,
+      Devices_ModelNo,
+      Devices_company,
+      Devices_Operating_system,
+      timeZone,
+      Device_browser,
+      location,
+      IPAddress,
+      Status: Status !== undefined ? Status : true,
       CreateBy: userId
     });
 
@@ -33,7 +91,20 @@ const createMyDevices = async (req, res) => {
 // Update MyDevices
 const updateMyDevices = async (req, res) => {
   try {
-    const { id, Name, type, Status } = req.body;
+    const { 
+      id, 
+      Name, 
+      type, 
+      isActive,
+      Devices_ModelNo,
+      Devices_company,
+      Devices_Operating_system,
+      timeZone,
+      Device_browser,
+      location,
+      IPAddress,
+      Status 
+    } = req.body;
     const userId = req.user.user_id;
 
     if (!id) {
@@ -53,6 +124,14 @@ const updateMyDevices = async (req, res) => {
 
     if (Name !== undefined) myDevices.Name = Name;
     if (type !== undefined) myDevices.type = type;
+    if (isActive !== undefined) myDevices.isActive = isActive;
+    if (Devices_ModelNo !== undefined) myDevices.Devices_ModelNo = Devices_ModelNo;
+    if (Devices_company !== undefined) myDevices.Devices_company = Devices_company;
+    if (Devices_Operating_system !== undefined) myDevices.Devices_Operating_system = Devices_Operating_system;
+    if (timeZone !== undefined) myDevices.timeZone = timeZone;
+    if (Device_browser !== undefined) myDevices.Device_browser = Device_browser;
+    if (location !== undefined) myDevices.location = location;
+    if (IPAddress !== undefined) myDevices.IPAddress = IPAddress;
     if (Status !== undefined) myDevices.Status = Status;
     
     myDevices.UpdatedBy = userId;

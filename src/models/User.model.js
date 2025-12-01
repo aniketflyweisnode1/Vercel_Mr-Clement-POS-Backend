@@ -31,6 +31,16 @@ const userSchema = new mongoose.Schema({
     ref: 'Language',
     required: true
   },
+  currency_id: {
+    type: Number,
+    ref: 'currency',
+    default: null
+  },
+  timezone: {
+    type: String,
+    default: null,
+    trim: true
+  },
   Country_id: {
     type: Number,
     ref: 'Country',

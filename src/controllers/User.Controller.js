@@ -2,10 +2,12 @@ const User = require('../models/User.model');
 const Responsibility = require('../models/Responsibility.model');
 const Role = require('../models/Role.model');
 const Language = require('../models/Language.model');
+const Currency = require('../models/currency.model');
 const Country = require('../models/Country.model');
 const State = require('../models/State.model');
 const City = require('../models/City.model');
 const Permissions_type_Map_with_Employee = require('../models/Permissions_type_Map_with_Employee.model');
+const SubAdmin_Permissions = require('../models/SubAdmin_Permissions.model');
 const Clock = require('../models/Clock.model');
 const Review = require('../models/Review.model');
 const Clients = require('../models/Clients.model');
@@ -20,6 +22,8 @@ const createUser = async (req, res) => {
       Responsibility_id,
       Role_id,
       Language_id,
+      currency_id,
+      timezone,
       Country_id,
       State_id,
       password,
@@ -54,6 +58,8 @@ const createUser = async (req, res) => {
       Responsibility_id,
       Role_id,
       Language_id,
+      currency_id,
+      timezone,
       Country_id,
       State_id,
       City_id,
@@ -89,11 +95,36 @@ const createUser = async (req, res) => {
       }
     }
 
+    // Check if role = 5 and create SubAdmin_Permissions
+    if (Role_id === 5) {
+      try {
+        // Check if permissions already exist
+        const existingPermissions = await SubAdmin_Permissions.findOne({ 
+          User_id: savedUser.user_id 
+        });
+
+        if (!existingPermissions) {
+          const subAdminPermissions = new SubAdmin_Permissions({
+            User_id: savedUser.user_id,
+            IsPermissons: [{ type: 'Dashboard', status: false }],
+            role_id: savedUser.Role_id,
+            Status: true,
+            CreateBy: req.user?.user_id || savedUser.user_id
+          });
+          await subAdminPermissions.save();
+        }
+      } catch (subAdminError) {
+        console.error('Error creating SubAdmin permissions:', subAdminError);
+        // Continue with user creation even if SubAdmin permissions creation fails
+      }
+    }
+
     // Manually fetch related data
-    const [responsibility, role, language, country, state, city, createByUser] = await Promise.all([
+    const [responsibility, role, language, currency, country, state, city, createByUser] = await Promise.all([
       Responsibility.findOne({ Responsibility_id: savedUser.Responsibility_id }),
       Role.findOne({ Role_id: savedUser.Role_id }),
       Language.findOne({ Language_id: savedUser.Language_id }),
+      savedUser.currency_id ? Currency.findOne({ currency_id: savedUser.currency_id }) : null,
       Country.findOne({ Country_id: savedUser.Country_id }),
       State.findOne({ State_id: savedUser.State_id }),
       City.findOne({ City_id: savedUser.City_id }),
@@ -105,6 +136,7 @@ const createUser = async (req, res) => {
     userResponse.Responsibility_id = responsibility ? { Responsibility_id: responsibility.Responsibility_id, Responsibility_name: responsibility.Responsibility_name } : null;
     userResponse.Role_id = role ? { Role_id: role.Role_id, role_name: role.role_name } : null;
     userResponse.Language_id = language ? { Language_id: language.Language_id, Language_name: language.Language_name } : null;
+    userResponse.currency_id = currency ? { currency_id: currency.currency_id, name: currency.name, icon: currency.icon } : null;
     userResponse.Country_id = country ? { Country_id: country.Country_id, Country_name: country.Country_name, code: country.code } : null;
     userResponse.State_id = state ? { State_id: state.State_id, state_name: state.state_name, Code: state.Code } : null;
     userResponse.City_id = city ? { City_id: city.City_id, City_name: city.City_name, Code: city.Code } : null;
@@ -154,6 +186,8 @@ const createEmployee = async (req, res) => {
       Responsibility_id,
       Role_id,
       Language_id,
+      currency_id,
+      timezone,
       Country_id,
       State_id,
       password,
@@ -188,6 +222,8 @@ const createEmployee = async (req, res) => {
       Responsibility_id,
       Role_id,
       Language_id,
+      currency_id,
+      timezone,
       Country_id,
       State_id,
       City_id,
@@ -223,11 +259,36 @@ const createEmployee = async (req, res) => {
       }
     }
 
+    // Check if role = 5 and create SubAdmin_Permissions
+    if (Role_id === 5) {
+      try {
+        // Check if permissions already exist
+        const existingPermissions = await SubAdmin_Permissions.findOne({ 
+          User_id: savedUser.user_id 
+        });
+
+        if (!existingPermissions) {
+          const subAdminPermissions = new SubAdmin_Permissions({
+            User_id: savedUser.user_id,
+            IsPermissons: [{ type: 'Dashboard', status: false }],
+            role_id: savedUser.Role_id,
+            Status: true,
+            CreateBy: req.user?.user_id || savedUser.user_id
+          });
+          await subAdminPermissions.save();
+        }
+      } catch (subAdminError) {
+        console.error('Error creating SubAdmin permissions:', subAdminError);
+        // Continue with user creation even if SubAdmin permissions creation fails
+      }
+    }
+
     // Manually fetch related data
-    const [responsibility, role, language, country, state, city, createByUser] = await Promise.all([
+    const [responsibility, role, language, currency, country, state, city, createByUser] = await Promise.all([
       Responsibility.findOne({ Responsibility_id: savedUser.Responsibility_id }),
       Role.findOne({ Role_id: savedUser.Role_id }),
       Language.findOne({ Language_id: savedUser.Language_id }),
+      savedUser.currency_id ? Currency.findOne({ currency_id: savedUser.currency_id }) : null,
       Country.findOne({ Country_id: savedUser.Country_id }),
       State.findOne({ State_id: savedUser.State_id }),
       City.findOne({ City_id: savedUser.City_id }),
@@ -239,6 +300,7 @@ const createEmployee = async (req, res) => {
     userResponse.Responsibility_id = responsibility ? { Responsibility_id: responsibility.Responsibility_id, Responsibility_name: responsibility.Responsibility_name } : null;
     userResponse.Role_id = role ? { Role_id: role.Role_id, role_name: role.role_name } : null;
     userResponse.Language_id = language ? { Language_id: language.Language_id, Language_name: language.Language_name } : null;
+    userResponse.currency_id = currency ? { currency_id: currency.currency_id, name: currency.name, icon: currency.icon } : null;
     userResponse.Country_id = country ? { Country_id: country.Country_id, Country_name: country.Country_name, code: country.code } : null;
     userResponse.State_id = state ? { State_id: state.State_id, state_name: state.state_name, Code: state.Code } : null;
     userResponse.City_id = city ? { City_id: city.City_id, City_name: city.City_name, Code: city.Code } : null;
@@ -363,10 +425,11 @@ const updateUser = async (req, res) => {
     const updatedUser = await user.save();
 
     // Manually fetch related data
-    const [responsibility, role, language, country, state, city, createByUser, updatedByUser] = await Promise.all([
+    const [responsibility, role, language, currency, country, state, city, createByUser, updatedByUser] = await Promise.all([
       Responsibility.findOne({ Responsibility_id: updatedUser.Responsibility_id }),
       Role.findOne({ Role_id: updatedUser.Role_id }),
       Language.findOne({ Language_id: updatedUser.Language_id }),
+      updatedUser.currency_id ? Currency.findOne({ currency_id: updatedUser.currency_id }) : null,
       Country.findOne({ Country_id: updatedUser.Country_id }),
       State.findOne({ State_id: updatedUser.State_id }),
       City.findOne({ City_id: updatedUser.City_id }),
@@ -379,6 +442,7 @@ const updateUser = async (req, res) => {
     userResponse.Responsibility_id = responsibility ? { Responsibility_id: responsibility.Responsibility_id, Responsibility_name: responsibility.Responsibility_name } : null;
     userResponse.Role_id = role ? { Role_id: role.Role_id, role_name: role.role_name } : null;
     userResponse.Language_id = language ? { Language_id: language.Language_id, Language_name: language.Language_name } : null;
+    userResponse.currency_id = currency ? { currency_id: currency.currency_id, name: currency.name, icon: currency.icon } : null;
     userResponse.Country_id = country ? { Country_id: country.Country_id, Country_name: country.Country_name, code: country.code } : null;
     userResponse.State_id = state ? { State_id: state.State_id, state_name: state.state_name, Code: state.Code } : null;
     userResponse.City_id = city ? { City_id: city.City_id, City_name: city.City_name, Code: city.Code } : null;
@@ -436,10 +500,11 @@ const getUserById = async (req, res) => {
     }
 
     // Manually fetch related data
-    const [responsibility, role, language, country, state, city, createByUser, updatedByUser] = await Promise.all([
+    const [responsibility, role, language, currency, country, state, city, createByUser, updatedByUser] = await Promise.all([
       Responsibility.findOne({ Responsibility_id: user.Responsibility_id }),
       Role.findOne({ Role_id: user.Role_id }),
       Language.findOne({ Language_id: user.Language_id }),
+      user.currency_id ? Currency.findOne({ currency_id: user.currency_id }) : null,
       Country.findOne({ Country_id: user.Country_id }),
       State.findOne({ State_id: user.State_id }),
       City.findOne({ City_id: user.City_id }),
@@ -452,6 +517,7 @@ const getUserById = async (req, res) => {
     userResponse.Responsibility_id = responsibility ? { Responsibility_id: responsibility.Responsibility_id, Responsibility_name: responsibility.Responsibility_name } : null;
     userResponse.Role_id = role ? { Role_id: role.Role_id, role_name: role.role_name } : null;
     userResponse.Language_id = language ? { Language_id: language.Language_id, Language_name: language.Language_name } : null;
+    userResponse.currency_id = currency ? { currency_id: currency.currency_id, name: currency.name, icon: currency.icon } : null;
     userResponse.Country_id = country ? { Country_id: country.Country_id, Country_name: country.Country_name, code: country.code } : null;
     userResponse.State_id = state ? { State_id: state.State_id, state_name: state.state_name, Code: state.Code } : null;
     userResponse.City_id = city ? { City_id: city.City_id, City_name: city.City_name, Code: city.Code } : null;
