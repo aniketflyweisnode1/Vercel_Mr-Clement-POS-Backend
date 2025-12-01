@@ -19,8 +19,14 @@ const restaurantSlotSchema = new mongoose.Schema({
       trim: true
     },
     slot: [{
-      type: String,
-      trim: true
+      from: {
+        type: String,
+        trim: true
+      },
+      to: {
+        type: String,
+        trim: true
+      }
     }]
   }],
   Status: {

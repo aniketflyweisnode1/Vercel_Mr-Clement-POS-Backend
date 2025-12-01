@@ -46,6 +46,27 @@ const createRestaurantSlot = async (req, res) => {
             message: 'Each slot must have a slot array'
           });
         }
+        // Validate each slot time object
+        for (const timeSlot of slotItem.slot) {
+          if (typeof timeSlot !== 'object' || timeSlot === null) {
+            return res.status(400).json({
+              success: false,
+              message: 'Each slot time must be an object with from and to properties'
+            });
+          }
+          if (!timeSlot.from || typeof timeSlot.from !== 'string') {
+            return res.status(400).json({
+              success: false,
+              message: 'Each slot time must have a from property (string)'
+            });
+          }
+          if (!timeSlot.to || typeof timeSlot.to !== 'string') {
+            return res.status(400).json({
+              success: false,
+              message: 'Each slot time must have a to property (string)'
+            });
+          }
+        }
       }
     }
 
@@ -142,6 +163,27 @@ const updateRestaurantSlot = async (req, res) => {
             success: false,
             message: 'Each slot must have a slot array'
           });
+        }
+        // Validate each slot time object
+        for (const timeSlot of slotItem.slot) {
+          if (typeof timeSlot !== 'object' || timeSlot === null) {
+            return res.status(400).json({
+              success: false,
+              message: 'Each slot time must be an object with from and to properties'
+            });
+          }
+          if (!timeSlot.from || typeof timeSlot.from !== 'string') {
+            return res.status(400).json({
+              success: false,
+              message: 'Each slot time must have a from property (string)'
+            });
+          }
+          if (!timeSlot.to || typeof timeSlot.to !== 'string') {
+            return res.status(400).json({
+              success: false,
+              message: 'Each slot time must have a to property (string)'
+            });
+          }
         }
       }
 
