@@ -42,6 +42,7 @@ const planRoutes = require('./master/plan.route.js');
 const planMapClientRoutes = require('./master/plan_map_client.route.js');
 const floorMapTableRoutes = require('./master/floor_map_table.route.js');
 const walletRoutes = require('./master/wallet.route.js');
+const transactionRoutes = require('./master/transaction.route.js');
 
 // Restaurant routes
 const itemVariantsRoutes = require('./restaurant/item_Variants.route.js');
@@ -112,6 +113,7 @@ router.use('/master/plan', planRoutes);
 router.use('/master/plan_map_client', planMapClientRoutes);
 router.use('/master/floor_map_table', floorMapTableRoutes);
 router.use('/master/wallet', walletRoutes);
+router.use('/master/transaction', transactionRoutes);
 router.use('/employee/table_booking', tableBookingRoutes);
 router.use('/employee/order_history', orderHistoryRoutes);
 

@@ -27,6 +27,9 @@ const adminPlanBuyRestaurantSchema = new mongoose.Schema({
   expiry_date: {
     type: Date
   },
+  paymentSuccessDate: {
+    type: Date
+  },
   Status: {
     type: Boolean,
     default: true

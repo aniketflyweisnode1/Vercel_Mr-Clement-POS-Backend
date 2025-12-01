@@ -7,7 +7,12 @@ const {
   getAdminPlanBuyRestaurantById,
   getAllAdminPlanBuyRestaurant,
   getAdminPlanBuyRestaurantByAuth,
-  deleteAdminPlanBuyRestaurant
+  deleteAdminPlanBuyRestaurant,
+  fistPlan_buy_byuserid,
+  isActiveByAuth,
+  TotalRenewPlanByauth,
+  MatchPlanDay_and_IsAcitveExpirydate,
+  getAllSubscription
 } = require('../../controllers/Admin_Plan_buy_Restaurant.Controller');
 
 // Create Admin Plan Buy Restaurant (with auth)
@@ -27,6 +32,21 @@ router.get('/getbyauth', auth, getAdminPlanBuyRestaurantByAuth);
 
 // Delete Admin Plan Buy Restaurant (with auth)
 router.delete('/delete/:id', auth, deleteAdminPlanBuyRestaurant);
+
+// Get First Plan Buy by User ID (with auth)
+router.get('/fistPlan_buy_byuserid/:userid', auth, fistPlan_buy_byuserid);
+
+// Check if Plan is Active by Auth (with auth)
+router.get('/isActiveByAuth', auth, isActiveByAuth);
+
+// Get Total Renew Plans by Auth (with auth)
+router.get('/TotalRenewPlanByauth', auth, TotalRenewPlanByauth);
+
+// Match Plan Day and Check IsActive, Expiry Date, Remaining Days (with auth)
+router.get('/MatchPlanDay_and_IsAcitveExpirydate', auth, MatchPlanDay_and_IsAcitveExpirydate);
+
+// Get All Subscriptions with Date Filter (with auth)
+router.get('/getAllSubscription', auth, getAllSubscription);
 
 module.exports = router;
 

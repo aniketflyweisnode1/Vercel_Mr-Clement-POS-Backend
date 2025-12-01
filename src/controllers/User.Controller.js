@@ -864,10 +864,38 @@ const getEmployeesByRestaurantId = async (req, res) => {
       return employeeObj;
     }));
 
+    // Group employees by Role
+    const employeesByRole = {};
+    employeesResponse.forEach(employee => {
+      const roleId = employee.Role_id?.Role_id || 'unknown';
+      if (!employeesByRole[roleId]) {
+        employeesByRole[roleId] = {
+          Role_id: employee.Role_id?.Role_id || null,
+          role_name: employee.Role_id?.role_name || 'Unknown Role',
+          employees: []
+        };
+      }
+      employeesByRole[roleId].employees.push(employee);
+    });
+
+    // Convert to array format
+    const categorizedEmployees = Object.values(employeesByRole).map(roleGroup => ({
+      Role_id: roleGroup.Role_id,
+      role_name: roleGroup.role_name,
+      employee_count: roleGroup.employees.length,
+      employees: roleGroup.employees
+    }));
+
     res.status(200).json({
       success: true,
-      count: employeesResponse.length,
-      data: employeesResponse
+      message: 'Employees retrieved successfully',
+      restaurant: {
+        user_id: restaurantUser.user_id,
+        Name: restaurantUser.Name,
+        email: restaurantUser.email
+      },
+      total_employees: employeesResponse.length,
+      categorized_by_role: categorizedEmployees
     });
   } catch (error) {
     res.status(500).json({

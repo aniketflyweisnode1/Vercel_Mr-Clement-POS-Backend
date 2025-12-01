@@ -1,11 +1,12 @@
 const Admin_Plan_buy_Restaurant = require('../models/Admin_Plan_buy_Restaurant.model');
 const Admin_Plan = require('../models/Admin_Plan.model');
 const User = require('../models/User.model');
+const Transaction = require('../models/Transaction.model');
 
 // Create Admin Plan Buy Restaurant
 const createAdminPlanBuyRestaurant = async (req, res) => {
   try {
-    const { Admin_Plan_id, isActive, paymentStatus, Trangection_id, expiry_date } = req.body;
+    const { Admin_Plan_id} = req.body;
     const userId = req.user.user_id;
 
     if (!Admin_Plan_id) {
@@ -24,12 +25,68 @@ const createAdminPlanBuyRestaurant = async (req, res) => {
       });
     }
 
+    // Auto-set Trangection_id if not provided - find latest transaction for the user
+    let transactionId = null;
+      // Find the latest transaction for this user
+      const latestTransaction = await Transaction.findOne({ 
+        user_id: userId,
+        amount: adminPlan.Price,
+        payment_method: 'Online',
+        transactionType: 'Plan_Buy',
+        reference_number: 'Plan_Buy',
+        CGST: 0,
+        SGST: 0,
+        TotalGST: 0,
+        bank_id: null,
+        PaymentDetails_id: null,
+        isDownloaded: false,
+        fileDownlodedPath: null,
+        created_by: userId
+      }).sort({ created_at: -1 });
+      
+      if (latestTransaction) {
+        transactionId = latestTransaction.transagtion_id;
+      }
+
+    // If paymentStatus is true, verify transaction status
+    let finalPaymentStatus = paymentStatus !== undefined ? paymentStatus : false;
+    let finalIsActive = isActive !== undefined ? isActive : false;
+    let calculatedExpiryDate = null;
+
+    let paymentSuccessDate = null;
+    if (finalPaymentStatus && transactionId) {
+      const transaction = await Transaction.findOne({ transagtion_id: transactionId });
+      if (transaction && transaction.status === 'success') {
+        finalIsActive = true;
+        // Set paymentSuccessDate when transaction is successful
+        paymentSuccessDate = transaction.transaction_date || new Date();
+        // Calculate expiry_date based on plan duration
+        if (adminPlan.expiry_day) {
+          const planExpiryDay = new Date(adminPlan.expiry_day);
+          const planCreateDate = adminPlan.CreateAt || new Date();
+          // Calculate duration in days
+          const durationMs = planExpiryDay - planCreateDate;
+          const durationDays = Math.ceil(durationMs / (1000 * 60 * 60 * 24));
+          
+          // Set expiry_date = current date + duration
+          const currentDate = new Date();
+          calculatedExpiryDate = new Date(currentDate);
+          calculatedExpiryDate.setDate(currentDate.getDate() + durationDays);
+        }
+      } else {
+        // Transaction not found or not successful
+        finalPaymentStatus = false;
+        finalIsActive = false;
+      }
+    }
+
     const adminPlanBuyRestaurant = new Admin_Plan_buy_Restaurant({
       Admin_Plan_id: parseInt(Admin_Plan_id),
-      isActive: isActive !== undefined ? isActive : true,
-      paymentStatus: paymentStatus !== undefined ? paymentStatus : false,
-      Trangection_id: Trangection_id ? parseInt(Trangection_id) : null,
-      expiry_date: expiry_date ? new Date(expiry_date) : null,
+      isActive: finalIsActive,
+      paymentStatus: finalPaymentStatus,
+      Trangection_id: transactionId,
+      expiry_date: calculatedExpiryDate,
+      paymentSuccessDate: paymentSuccessDate,
       Status: true,
       CreateBy: userId
     });
@@ -100,8 +157,9 @@ const updateAdminPlanBuyRestaurant = async (req, res) => {
     }
 
     // Verify Admin Plan exists if updating
+    let adminPlan;
     if (Admin_Plan_id !== undefined) {
-      const adminPlan = await Admin_Plan.findOne({ Admin_Plan_id: parseInt(Admin_Plan_id) });
+      adminPlan = await Admin_Plan.findOne({ Admin_Plan_id: parseInt(Admin_Plan_id) });
       if (!adminPlan) {
         return res.status(404).json({
           success: false,
@@ -109,13 +167,99 @@ const updateAdminPlanBuyRestaurant = async (req, res) => {
         });
       }
       adminPlanBuyRestaurant.Admin_Plan_id = parseInt(Admin_Plan_id);
+    } else {
+      // Get existing Admin Plan for expiry calculation
+      adminPlan = await Admin_Plan.findOne({ 
+        Admin_Plan_id: adminPlanBuyRestaurant.Admin_Plan_id 
+      });
+      
+      if (!adminPlan) {
+        return res.status(404).json({
+          success: false,
+          message: 'Admin Plan not found'
+        });
+      }
     }
 
-    if (isActive !== undefined) adminPlanBuyRestaurant.isActive = isActive;
-    if (paymentStatus !== undefined) adminPlanBuyRestaurant.paymentStatus = paymentStatus;
+    // Auto-set Trangection_id if not provided and not already set
     if (Trangection_id !== undefined) {
       adminPlanBuyRestaurant.Trangection_id = Trangection_id ? parseInt(Trangection_id) : null;
+    } else if (!adminPlanBuyRestaurant.Trangection_id) {
+      // Find the latest transaction for this user if Trangection_id is not set
+      const latestTransaction = await Transaction.findOne({ 
+        user_id: adminPlanBuyRestaurant.CreateBy,
+        transactionType: 'Plan_Buy'
+      }).sort({ created_at: -1 });
+      
+      if (latestTransaction) {
+        adminPlanBuyRestaurant.Trangection_id = latestTransaction.transagtion_id;
+      }
     }
+
+    // Handle paymentStatus change to true
+    const previousPaymentStatus = adminPlanBuyRestaurant.paymentStatus;
+    if (paymentStatus !== undefined) {
+      adminPlanBuyRestaurant.paymentStatus = paymentStatus;
+    }
+
+    // If paymentStatus is being set to true or is already true, check transaction and update expiry_date and isActive
+    if (adminPlanBuyRestaurant.paymentStatus === true) {
+      const transactionId = adminPlanBuyRestaurant.Trangection_id;
+      
+      if (transactionId) {
+        const transaction = await Transaction.findOne({ transagtion_id: transactionId });
+        
+        if (transaction && transaction.status === 'success') {
+          // Transaction is successful, activate plan and set expiry_date
+          adminPlanBuyRestaurant.isActive = true;
+          
+          // Set paymentSuccessDate when transaction is successful
+          if (!adminPlanBuyRestaurant.paymentSuccessDate) {
+            adminPlanBuyRestaurant.paymentSuccessDate = transaction.transaction_date || new Date();
+          }
+          
+          // Calculate expiry_date based on plan duration
+          if (adminPlan.expiry_day) {
+            const planExpiryDay = new Date(adminPlan.expiry_day);
+            const planCreateDate = adminPlan.CreateAt || new Date();
+            // Calculate duration in days
+            const durationMs = planExpiryDay - planCreateDate;
+            const durationDays = Math.ceil(durationMs / (1000 * 60 * 60 * 24));
+            
+            // Set expiry_date = current date + duration (or update date if already set)
+            const currentDate = new Date();
+            const calculatedExpiryDate = new Date(currentDate);
+            calculatedExpiryDate.setDate(currentDate.getDate() + durationDays);
+            adminPlanBuyRestaurant.expiry_date = calculatedExpiryDate;
+          }
+        } else {
+          // Transaction not found or not successful
+          if (paymentStatus === true && previousPaymentStatus === false) {
+            // Only reject if paymentStatus is being set to true now
+            return res.status(400).json({
+              success: false,
+              message: 'Cannot set paymentStatus to true. Transaction not found or status is not success'
+            });
+          }
+        }
+      } else {
+        // No transaction ID
+        if (paymentStatus === true && previousPaymentStatus === false) {
+          return res.status(400).json({
+            success: false,
+            message: 'Cannot set paymentStatus to true. Transaction ID is required'
+          });
+        }
+      }
+    } else {
+      // If paymentStatus is being set to false, also set isActive to false
+      if (paymentStatus === false) {
+        adminPlanBuyRestaurant.isActive = false;
+      }
+    }
+
+    // Allow manual override of isActive and expiry_date if explicitly provided
+    if (isActive !== undefined) adminPlanBuyRestaurant.isActive = isActive;
     if (expiry_date !== undefined) {
       adminPlanBuyRestaurant.expiry_date = expiry_date ? new Date(expiry_date) : null;
     }
@@ -364,12 +508,489 @@ const deleteAdminPlanBuyRestaurant = async (req, res) => {
   }
 };
 
+// Get First Plan Buy by User ID
+const fistPlan_buy_byuserid = async (req, res) => {
+  try {
+    const { userid } = req.params;
+    const parsedUserId = parseInt(userid);
+
+    if (!userid || isNaN(parsedUserId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid user ID is required'
+      });
+    }
+
+    // Verify user exists
+    const user = await User.findOne({ user_id: parsedUserId });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Find the first plan buy for this user (oldest by CreateAt)
+    const firstPlanBuy = await Admin_Plan_buy_Restaurant.findOne({
+      CreateBy: parsedUserId,
+      Status: true
+    }).sort({ CreateAt: 1 }); // Sort ascending to get the first one
+
+    if (!firstPlanBuy) {
+      return res.status(404).json({
+        success: false,
+        message: 'No plan buy found for this user'
+      });
+    }
+
+    // Fetch related data
+    const [createByUser, updatedByUser, adminPlanData, transaction] = await Promise.all([
+      User.findOne({ user_id: firstPlanBuy.CreateBy }),
+      firstPlanBuy.UpdatedBy ? User.findOne({ user_id: firstPlanBuy.UpdatedBy }) : null,
+      Admin_Plan.findOne({ Admin_Plan_id: firstPlanBuy.Admin_Plan_id }),
+      firstPlanBuy.Trangection_id ? Transaction.findOne({ transagtion_id: firstPlanBuy.Trangection_id }) : null
+    ]);
+
+    const planBuyResponse = firstPlanBuy.toObject();
+    planBuyResponse.CreateBy = createByUser ? {
+      user_id: createByUser.user_id,
+      Name: createByUser.Name,
+      email: createByUser.email
+    } : null;
+    planBuyResponse.UpdatedBy = updatedByUser ? {
+      user_id: updatedByUser.user_id,
+      Name: updatedByUser.Name,
+      email: updatedByUser.email
+    } : null;
+    planBuyResponse.Admin_Plan_id = adminPlanData ? {
+      Admin_Plan_id: adminPlanData.Admin_Plan_id,
+      PlanName: adminPlanData.PlanName,
+      Description: adminPlanData.Description,
+      Price: adminPlanData.Price,
+      expiry_day: adminPlanData.expiry_day
+    } : null;
+    planBuyResponse.Transaction = transaction ? {
+      transagtion_id: transaction.transagtion_id,
+      amount: transaction.amount,
+      status: transaction.status,
+      payment_method: transaction.payment_method,
+      transactionType: transaction.transactionType,
+      transaction_date: transaction.transaction_date
+    } : null;
+
+    res.status(200).json({
+      success: true,
+      message: 'First plan buy retrieved successfully',
+      data: planBuyResponse
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching first plan buy',
+      error: error.message
+    });
+  }
+};
+
+// Check if Plan is Active by Auth (current logged in user)
+const isActiveByAuth = async (req, res) => {
+  try {
+    const userId = req.user.user_id;
+
+    // Find active plans for the current user
+    const activePlans = await Admin_Plan_buy_Restaurant.find({
+      CreateBy: userId,
+      isActive: true,
+      Status: true
+    }).sort({ CreateAt: -1 });
+
+    // Check if any plan is currently active (not expired)
+    const currentDate = new Date();
+    let isActive = false;
+    let activePlanDetails = null;
+
+    for (const plan of activePlans) {
+      if (plan.expiry_date) {
+        const expiryDate = new Date(plan.expiry_date);
+        if (expiryDate > currentDate && plan.paymentStatus === true) {
+          isActive = true;
+          activePlanDetails = {
+            Admin_Plan_buy_Restaurant_id: plan.Admin_Plan_buy_Restaurant_id,
+            isActive: plan.isActive,
+            paymentStatus: plan.paymentStatus,
+            expiry_date: plan.expiry_date,
+            CreateAt: plan.CreateAt
+          };
+          break; // Get the first active plan
+        }
+      } else if (plan.paymentStatus === true) {
+        // If no expiry_date but payment is successful, consider it active
+        isActive = true;
+        activePlanDetails = {
+          Admin_Plan_buy_Restaurant_id: plan.Admin_Plan_buy_Restaurant_id,
+          isActive: plan.isActive,
+          paymentStatus: plan.paymentStatus,
+          expiry_date: plan.expiry_date,
+          CreateAt: plan.CreateAt
+        };
+        break;
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      isActive: isActive,
+      activePlan: activePlanDetails,
+      totalActivePlans: activePlans.length
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error checking plan active status',
+      error: error.message
+    });
+  }
+};
+
+// Get Total Renew Plans by Auth (current logged in user)
+const TotalRenewPlanByauth = async (req, res) => {
+  try {
+    const userId = req.user.user_id;
+
+    // Get the first plan buy
+    const firstPlanBuy = await Admin_Plan_buy_Restaurant.findOne({
+      CreateBy: userId,
+      Status: true
+    }).sort({ CreateAt: 1 });
+
+    if (!firstPlanBuy) {
+      return res.status(200).json({
+        success: true,
+        message: 'No plans found for this user',
+        totalRenewPlans: 0,
+        firstPlanDate: null,
+        renewPlans: []
+      });
+    }
+
+    // Get all plans after the first one (renewals)
+    const renewPlans = await Admin_Plan_buy_Restaurant.find({
+      CreateBy: userId,
+      Status: true,
+      Admin_Plan_buy_Restaurant_id: { $ne: firstPlanBuy.Admin_Plan_buy_Restaurant_id }
+    }).sort({ CreateAt: 1 });
+
+    // Fetch related data for renew plans
+    const renewPlansWithDetails = await Promise.all(
+      renewPlans.map(async (plan) => {
+        const adminPlanData = await Admin_Plan.findOne({ Admin_Plan_id: plan.Admin_Plan_id });
+        return {
+          Admin_Plan_buy_Restaurant_id: plan.Admin_Plan_buy_Restaurant_id,
+          Admin_Plan_id: adminPlanData ? {
+            Admin_Plan_id: adminPlanData.Admin_Plan_id,
+            PlanName: adminPlanData.PlanName,
+            Price: adminPlanData.Price
+          } : null,
+          isActive: plan.isActive,
+          paymentStatus: plan.paymentStatus,
+          expiry_date: plan.expiry_date,
+          CreateAt: plan.CreateAt
+        };
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      totalRenewPlans: renewPlans.length,
+      firstPlanDate: firstPlanBuy.CreateAt,
+      renewPlans: renewPlansWithDetails
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching total renew plans',
+      error: error.message
+    });
+  }
+};
+
+// Match Plan Day and Check IsActive, Expiry Date, Remaining Days
+const MatchPlanDay_and_IsAcitveExpirydate = async (req, res) => {
+  try {
+    const userId = req.user.user_id;
+    const currentDate = new Date();
+
+    // Find all active plans for the current user
+    const userPlans = await Admin_Plan_buy_Restaurant.find({
+      CreateBy: userId,
+      Status: true
+    }).sort({ CreateAt: -1 });
+
+    if (!userPlans || userPlans.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'No plans found for this user',
+        data: {
+          hasActivePlan: false,
+          isActive: false,
+          expiry_date: null,
+          remainingDays: 0,
+          planDetails: null
+        }
+      });
+    }
+
+    // Find the most recent active plan that is not expired
+    let activePlan = null;
+    let remainingDays = 0;
+    let isActive = false;
+
+    for (const plan of userPlans) {
+      // Check if plan is active and payment is successful
+      if (plan.isActive === true && plan.paymentStatus === true) {
+        if (plan.expiry_date) {
+          const expiryDate = new Date(plan.expiry_date);
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          expiryDate.setHours(0, 0, 0, 0);
+
+          // Calculate remaining days
+          const timeDiff = expiryDate - today;
+          const daysDiff = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+
+          if (daysDiff > 0) {
+            // Plan is still valid
+            activePlan = plan;
+            remainingDays = daysDiff;
+            isActive = true;
+            break;
+          } else if (daysDiff === 0) {
+            // Plan expires today
+            activePlan = plan;
+            remainingDays = 0;
+            isActive = true;
+            break;
+          }
+          // If daysDiff < 0, plan is expired, continue to next plan
+        } else {
+          // No expiry date, consider it active
+          activePlan = plan;
+          remainingDays = null; // No expiry date means unlimited
+          isActive = true;
+          break;
+        }
+      }
+    }
+
+    // If no active plan found, get the most recent plan for reference
+    if (!activePlan && userPlans.length > 0) {
+      activePlan = userPlans[0];
+    }
+
+    // Fetch related data
+    let planDetails = null;
+    if (activePlan) {
+      const [adminPlanData, transaction] = await Promise.all([
+        Admin_Plan.findOne({ Admin_Plan_id: activePlan.Admin_Plan_id }),
+        activePlan.Trangection_id ? Transaction.findOne({ transagtion_id: activePlan.Trangection_id }) : null
+      ]);
+
+      planDetails = {
+        Admin_Plan_buy_Restaurant_id: activePlan.Admin_Plan_buy_Restaurant_id,
+        Admin_Plan_id: adminPlanData ? {
+          Admin_Plan_id: adminPlanData.Admin_Plan_id,
+          PlanName: adminPlanData.PlanName,
+          Description: adminPlanData.Description,
+          Price: adminPlanData.Price,
+          expiry_day: adminPlanData.expiry_day
+        } : null,
+        isActive: activePlan.isActive,
+        paymentStatus: activePlan.paymentStatus,
+        expiry_date: activePlan.expiry_date,
+        CreateAt: activePlan.CreateAt,
+        Transaction: transaction ? {
+          transagtion_id: transaction.transagtion_id,
+          status: transaction.status,
+          amount: transaction.amount,
+          transaction_date: transaction.transaction_date
+        } : null
+      };
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Plan status retrieved successfully',
+      data: {
+        hasActivePlan: isActive,
+        isActive: isActive,
+        expiry_date: activePlan?.expiry_date || null,
+        remainingDays: remainingDays,
+        planDetails: planDetails
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error checking plan status',
+      error: error.message
+    });
+  }
+};
+
+// Helper function to get date range based on filter
+const getDateRangeForFilter = (filter) => {
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  
+  switch (filter) {
+    case 'today':
+      return {
+        start: startOfDay,
+        end: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000)
+      };
+    case 'thisWeek':
+      const dayOfWeek = now.getDay();
+      const startOfWeek = new Date(startOfDay);
+      startOfWeek.setDate(startOfDay.getDate() - dayOfWeek);
+      return {
+        start: startOfWeek,
+        end: new Date(startOfWeek.getTime() + 7 * 24 * 60 * 60 * 1000)
+      };
+    case 'thisMonth':
+      return {
+        start: new Date(now.getFullYear(), now.getMonth(), 1),
+        end: new Date(now.getFullYear(), now.getMonth() + 1, 1)
+      };
+    case 'thisYear':
+      return {
+        start: new Date(now.getFullYear(), 0, 1),
+        end: new Date(now.getFullYear() + 1, 0, 1)
+      };
+    default:
+      return null; // No filter, return all
+  }
+};
+
+// Get All Subscriptions with Date Filter
+const getAllSubscription = async (req, res) => {
+  try {
+    const { filter } = req.query; // filter: today, thisWeek, thisMonth, thisYear
+
+    // Build query - only get subscriptions with paymentStatus = true
+    let query = { 
+      Status: true,
+      paymentStatus: true
+    };
+
+    // Apply date filter if provided
+    if (filter) {
+      const dateRange = getDateRangeForFilter(filter);
+      if (dateRange) {
+        query.CreateAt = {
+          $gte: dateRange.start,
+          $lt: dateRange.end
+        };
+      }
+    }
+
+    // Get all subscriptions matching the filter
+    const subscriptions = await Admin_Plan_buy_Restaurant.find(query)
+      .sort({ CreateAt: -1 });
+
+    // Fetch related data for all subscriptions
+    const subscriptionsWithDetails = await Promise.all(
+      subscriptions.map(async (subscription) => {
+        const [createByUser, updatedByUser, adminPlanData, transaction] = await Promise.all([
+          User.findOne({ user_id: subscription.CreateBy }),
+          subscription.UpdatedBy ? User.findOne({ user_id: subscription.UpdatedBy }) : null,
+          Admin_Plan.findOne({ Admin_Plan_id: subscription.Admin_Plan_id }),
+          subscription.Trangection_id ? Transaction.findOne({ transagtion_id: subscription.Trangection_id }) : null
+        ]);
+
+        const subscriptionResponse = subscription.toObject();
+        subscriptionResponse.CreateBy = createByUser ? {
+          user_id: createByUser.user_id,
+          Name: createByUser.Name,
+          email: createByUser.email
+        } : null;
+        subscriptionResponse.UpdatedBy = updatedByUser ? {
+          user_id: updatedByUser.user_id,
+          Name: updatedByUser.Name,
+          email: updatedByUser.email
+        } : null;
+        subscriptionResponse.Admin_Plan_id = adminPlanData ? {
+          Admin_Plan_id: adminPlanData.Admin_Plan_id,
+          PlanName: adminPlanData.PlanName,
+          Description: adminPlanData.Description,
+          Price: adminPlanData.Price,
+          expiry_day: adminPlanData.expiry_day
+        } : null;
+        subscriptionResponse.Transaction = transaction ? {
+          transagtion_id: transaction.transagtion_id,
+          amount: transaction.amount,
+          status: transaction.status,
+          payment_method: transaction.payment_method,
+          transactionType: transaction.transactionType,
+          transaction_date: transaction.transaction_date
+        } : null;
+
+        // Calculate remaining days if expiry_date exists
+        if (subscription.expiry_date) {
+          const expiryDate = new Date(subscription.expiry_date);
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          expiryDate.setHours(0, 0, 0, 0);
+          const timeDiff = expiryDate - today;
+          const daysDiff = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+          subscriptionResponse.remainingDays = daysDiff > 0 ? daysDiff : 0;
+        } else {
+          subscriptionResponse.remainingDays = null;
+        }
+
+        return subscriptionResponse;
+      })
+    );
+
+    // Calculate summary statistics
+    const totalSubscriptions = subscriptionsWithDetails.length;
+    const activeSubscriptions = subscriptionsWithDetails.filter(sub => sub.isActive === true && sub.paymentStatus === true).length;
+    const totalRevenue = subscriptionsWithDetails.reduce((sum, sub) => {
+      return sum + (sub.Transaction?.amount || 0);
+    }, 0);
+
+    res.status(200).json({
+      success: true,
+      message: 'Subscriptions retrieved successfully',
+      filter: filter || 'all',
+      summary: {
+        totalSubscriptions,
+        activeSubscriptions,
+        inactiveSubscriptions: totalSubscriptions - activeSubscriptions,
+        totalRevenue: parseFloat(totalRevenue.toFixed(2))
+      },
+      count: subscriptionsWithDetails.length,
+      data: subscriptionsWithDetails
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching subscriptions',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   createAdminPlanBuyRestaurant,
   updateAdminPlanBuyRestaurant,
   getAdminPlanBuyRestaurantById,
   getAllAdminPlanBuyRestaurant,
   getAdminPlanBuyRestaurantByAuth,
-  deleteAdminPlanBuyRestaurant
+  deleteAdminPlanBuyRestaurant,
+  fistPlan_buy_byuserid,
+  isActiveByAuth,
+  TotalRenewPlanByauth,
+  MatchPlanDay_and_IsAcitveExpirydate,
+  getAllSubscription
 };
 
