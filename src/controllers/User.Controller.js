@@ -752,6 +752,31 @@ const getEmployeesByRestaurantId = async (req, res) => {
       });
     }
 
+    // Fetch clock records and reviews for all employees
+    const employeeIds = employees.map(emp => emp.user_id);
+    const [allClocks, allReviews] = await Promise.all([
+      Clock.find({ user_id: { $in: employeeIds }, Status: true }).sort({ CreateAt: -1 }),
+      Review.find({ for_Review_id: { $in: employeeIds }, Status: true }).sort({ CreateAt: -1 })
+    ]);
+
+    // Create maps for quick lookup
+    const clocksByEmployee = {};
+    const reviewsByEmployee = {};
+    
+    allClocks.forEach(clock => {
+      if (!clocksByEmployee[clock.user_id]) {
+        clocksByEmployee[clock.user_id] = [];
+      }
+      clocksByEmployee[clock.user_id].push(clock);
+    });
+
+    allReviews.forEach(review => {
+      if (!reviewsByEmployee[review.for_Review_id]) {
+        reviewsByEmployee[review.for_Review_id] = [];
+      }
+      reviewsByEmployee[review.for_Review_id].push(review);
+    });
+
     const employeesResponse = await Promise.all(employees.map(async (employee) => {
       const [responsibility, role, language, country, state, city, createByUser] = await Promise.all([
         Responsibility.findOne({ Responsibility_id: employee.Responsibility_id }),
@@ -771,6 +796,69 @@ const getEmployeesByRestaurantId = async (req, res) => {
       employeeObj.State_id = state ? { State_id: state.State_id, state_name: state.state_name, Code: state.Code } : null;
       employeeObj.City_id = city ? { City_id: city.City_id, City_name: city.City_name, Code: city.Code } : null;
       employeeObj.CreateBy = createByUser ? { user_id: createByUser.user_id, Name: createByUser.Name, email: createByUser.email } : null;
+
+      // Calculate shiftTimings
+      const clockRecords = clocksByEmployee[employee.user_id] || [];
+      let shiftTimings = {
+        average_in_time: null,
+        average_out_time: null,
+        average_working_hours: null,
+        total_working_days: 0
+      };
+
+      if (clockRecords.length > 0) {
+        const validRecords = clockRecords.filter(record => record.in_time && record.out_time);
+        
+        if (validRecords.length > 0) {
+          let totalInMinutes = 0;
+          let totalOutMinutes = 0;
+          let totalWorkingHours = 0;
+
+          validRecords.forEach(record => {
+            const inTime = new Date(record.in_time);
+            const outTime = new Date(record.out_time);
+            
+            const inHours = inTime.getHours();
+            const inMinutes = inTime.getMinutes();
+            totalInMinutes += (inHours * 60) + inMinutes;
+
+            const outHours = outTime.getHours();
+            const outMinutes = outTime.getMinutes();
+            totalOutMinutes += (outHours * 60) + outMinutes;
+
+            const workingMs = outTime - inTime;
+            const workingHours = workingMs / (1000 * 60 * 60);
+            totalWorkingHours += workingHours;
+          });
+
+          const avgInMinutes = Math.floor(totalInMinutes / validRecords.length);
+          const avgOutMinutes = Math.floor(totalOutMinutes / validRecords.length);
+          
+          const avgInHours = Math.floor(avgInMinutes / 60);
+          const avgInMins = avgInMinutes % 60;
+          const avgOutHours = Math.floor(avgOutMinutes / 60);
+          const avgOutMins = avgOutMinutes % 60;
+
+          shiftTimings.average_in_time = `${String(avgInHours).padStart(2, '0')}:${String(avgInMins).padStart(2, '0')}`;
+          shiftTimings.average_out_time = `${String(avgOutHours).padStart(2, '0')}:${String(avgOutMins).padStart(2, '0')}`;
+          shiftTimings.average_working_hours = parseFloat((totalWorkingHours / validRecords.length).toFixed(2));
+          shiftTimings.total_working_days = validRecords.length;
+        }
+      }
+
+      // Calculate overallperformance (%)
+      const performanceRatings = reviewsByEmployee[employee.user_id] || [];
+      let overallperformance = null;
+      
+      if (performanceRatings.length > 0) {
+        const totalRating = performanceRatings.reduce((sum, review) => sum + (review.ReviewStarCount || 0), 0);
+        const averageRating = totalRating / performanceRatings.length;
+        // Assuming max rating is 5, convert to percentage
+        overallperformance = parseFloat(((averageRating / 5) * 100).toFixed(2));
+      }
+
+      employeeObj.shiftTimings = shiftTimings;
+      employeeObj.overallperformance = overallperformance;
 
       delete employeeObj.password;
       return employeeObj;
@@ -958,14 +1046,76 @@ const getEmployeesByClientId = async (req, res) => {
       // Add performance data (reviews)
       employeeObj.performance = reviewsByEmployee[employee.user_id] || [];
 
-      // Calculate average performance rating
+      // Calculate shiftTimings
+      const clockRecords = clocksByEmployee[employee.user_id] || [];
+      let shiftTimings = {
+        average_in_time: null,
+        average_out_time: null,
+        average_working_hours: null,
+        total_working_days: 0
+      };
+
+      if (clockRecords.length > 0) {
+        const validRecords = clockRecords.filter(record => record.in_time && record.out_time);
+        
+        if (validRecords.length > 0) {
+          let totalInMinutes = 0;
+          let totalOutMinutes = 0;
+          let totalWorkingHours = 0;
+
+          validRecords.forEach(record => {
+            const inTime = new Date(record.in_time);
+            const outTime = new Date(record.out_time);
+            
+            const inHours = inTime.getHours();
+            const inMinutes = inTime.getMinutes();
+            totalInMinutes += (inHours * 60) + inMinutes;
+
+            const outHours = outTime.getHours();
+            const outMinutes = outTime.getMinutes();
+            totalOutMinutes += (outHours * 60) + outMinutes;
+
+            const workingMs = outTime - inTime;
+            const workingHours = workingMs / (1000 * 60 * 60);
+            totalWorkingHours += workingHours;
+          });
+
+          const avgInMinutes = Math.floor(totalInMinutes / validRecords.length);
+          const avgOutMinutes = Math.floor(totalOutMinutes / validRecords.length);
+          
+          const avgInHours = Math.floor(avgInMinutes / 60);
+          const avgInMins = avgInMinutes % 60;
+          const avgOutHours = Math.floor(avgOutMinutes / 60);
+          const avgOutMins = avgOutMinutes % 60;
+
+          shiftTimings.average_in_time = `${String(avgInHours).padStart(2, '0')}:${String(avgInMins).padStart(2, '0')}`;
+          shiftTimings.average_out_time = `${String(avgOutHours).padStart(2, '0')}:${String(avgOutMins).padStart(2, '0')}`;
+          shiftTimings.average_working_hours = parseFloat((totalWorkingHours / validRecords.length).toFixed(2));
+          shiftTimings.total_working_days = validRecords.length;
+        }
+      }
+
+      // Calculate overallperformance (%)
       const performanceRatings = reviewsByEmployee[employee.user_id] || [];
+      let overallperformance = null;
+      
       if (performanceRatings.length > 0) {
-        const totalRating = performanceRatings.reduce((sum, review) => sum + review.ReviewStarCount, 0);
+        const totalRating = performanceRatings.reduce((sum, review) => sum + (review.ReviewStarCount || 0), 0);
+        const averageRating = totalRating / performanceRatings.length;
+        // Assuming max rating is 5, convert to percentage
+        overallperformance = parseFloat(((averageRating / 5) * 100).toFixed(2));
+      }
+
+      // Calculate average performance rating (keeping for backward compatibility)
+      if (performanceRatings.length > 0) {
+        const totalRating = performanceRatings.reduce((sum, review) => sum + (review.ReviewStarCount || 0), 0);
         employeeObj.averagePerformanceRating = (totalRating / performanceRatings.length).toFixed(2);
       } else {
         employeeObj.averagePerformanceRating = null;
       }
+
+      employeeObj.shiftTimings = shiftTimings;
+      employeeObj.overallperformance = overallperformance;
 
       delete employeeObj.password;
       return employeeObj;
@@ -1150,6 +1300,20 @@ const getEmployeeDetailsById = async (req, res) => {
       TakenLeave: takenLeave
     };
 
+    // Calculate overallperformance (%)
+    const allReviews = await Review.find({ 
+      for_Review_id: parsedId, 
+      Status: true 
+    }).sort({ CreateAt: -1 });
+
+    let overallperformance = null;
+    if (allReviews.length > 0) {
+      const totalRating = allReviews.reduce((sum, review) => sum + (review.ReviewStarCount || 0), 0);
+      const averageRating = totalRating / allReviews.length;
+      // Assuming max rating is 5, convert to percentage
+      overallperformance = parseFloat(((averageRating / 5) * 100).toFixed(2));
+    }
+
     // Prepare employee response
     const employeeResponse = employee.toObject();
     
@@ -1161,6 +1325,10 @@ const getEmployeeDetailsById = async (req, res) => {
 
     // Add Work Details
     employeeResponse.WorkDetails = workDetails;
+
+    // Add shiftTimings and overallperformance at root level
+    employeeResponse.shiftTimings = shiftTimings;
+    employeeResponse.overallperformance = overallperformance;
 
     // Remove password
     delete employeeResponse.password;
