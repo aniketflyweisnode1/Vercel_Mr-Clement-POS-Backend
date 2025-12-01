@@ -334,7 +334,85 @@ const getClientById = async (req, res) => {
 // Get All Clients
 const getAllClients = async (req, res) => {
   try {
-    const clients = await Clients.find({ Status: true }).sort({ CreateAt: -1 });
+    const { filter } = req.query; // filter: all, active, repeat, inactive
+
+    let query = { Status: true };
+    let clients = [];
+
+    // Get restaurant role
+    const restaurantRole = await Role.findOne({ 
+      role_name: { $regex: /^restaurant$/i } 
+    });
+
+    if (!restaurantRole) {
+      return res.status(404).json({
+        success: false,
+        message: 'Restaurant role not found'
+      });
+    }
+
+    // Get all restaurant users
+    const restaurantUsers = await User.find({
+      Role_id: restaurantRole.Role_id,
+      Status: true
+    });
+
+    const restaurantUserIds = restaurantUsers.map(u => u.user_id);
+    const now = new Date();
+
+    if (filter === 'active' || filter === 'inactive' || filter === 'repeat') {
+      // For active/inactive/repeat, we need to check plan status
+      const activeRestaurantIds = [];
+      const inactiveRestaurantIds = [];
+      const repeatRestaurantIds = [];
+
+      for (const restaurant of restaurantUsers) {
+        const plans = await Admin_Plan_buy_Restaurant.find({
+          CreateBy: restaurant.user_id,
+          paymentStatus: true,
+          Status: true
+        }).sort({ CreateAt: -1 });
+
+        // Check if active
+        let isActive = false;
+        if (plans.length > 0) {
+          const latestPlan = plans[0];
+          if (latestPlan.isActive && latestPlan.expiry_date) {
+            const expiryDate = new Date(latestPlan.expiry_date);
+            if (expiryDate > now) {
+              isActive = true;
+            }
+          } else if (latestPlan.isActive && !latestPlan.expiry_date) {
+            isActive = true;
+          }
+        }
+
+        // Check if repeat (more than 1 plan purchase)
+        const isRepeat = plans.length > 1;
+
+        if (isActive) {
+          activeRestaurantIds.push(restaurant.user_id);
+        } else {
+          inactiveRestaurantIds.push(restaurant.user_id);
+        }
+
+        if (isRepeat) {
+          repeatRestaurantIds.push(restaurant.user_id);
+        }
+      }
+
+      // Get clients created by restaurants based on filter
+      if (filter === 'active') {
+        query.CreateBy = { $in: activeRestaurantIds };
+      } else if (filter === 'inactive') {
+        query.CreateBy = { $in: inactiveRestaurantIds };
+      } else if (filter === 'repeat') {
+        query.CreateBy = { $in: repeatRestaurantIds };
+      }
+    }
+
+    // If filter is 'all' or not specified, get all clients
+    clients = await Clients.find(query).sort({ CreateAt: -1 });
 
     // Manually fetch related data for all clients
     const clientsResponse = await Promise.all(clients.map(async (client) => {

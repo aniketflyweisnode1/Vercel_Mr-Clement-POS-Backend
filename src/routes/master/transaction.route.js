@@ -7,7 +7,8 @@ const {
   getTransactionById,
   getAllTransactions,
   getTransactionByAuth,
-  deleteTransaction
+  deleteTransaction,
+  getTransactionChart
 } = require('../../controllers/Transaction.Controller');
 
 // Create Transaction (with auth)
@@ -27,6 +28,9 @@ router.get('/getbyauth', auth, getTransactionByAuth);
 
 // Delete Transaction (with auth)
 router.delete('/delete/:id', auth, deleteTransaction);
+
+// Get Transaction Chart (with auth)
+router.get('/chart', auth, getTransactionChart);
 
 module.exports = router;
 

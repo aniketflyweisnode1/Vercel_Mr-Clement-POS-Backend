@@ -55,6 +55,10 @@ const myDevicesSchema = new mongoose.Schema({
     default: null,
     trim: true
   },
+  price: {
+    type: Number,
+    default: 0
+  },
   Status: {
     type: Boolean,
     default: true

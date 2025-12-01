@@ -2,6 +2,13 @@ const Admin_Plan_buy_Restaurant = require('../models/Admin_Plan_buy_Restaurant.m
 const Admin_Plan = require('../models/Admin_Plan.model');
 const User = require('../models/User.model');
 const Transaction = require('../models/Transaction.model');
+const City = require('../models/City.model');
+const Role = require('../models/Role.model');
+const Responsibility = require('../models/Responsibility.model');
+const Language = require('../models/Language.model');
+const Currency = require('../models/currency.model');
+const Country = require('../models/Country.model');
+const State = require('../models/State.model');
 
 // Create Admin Plan Buy Restaurant
 const createAdminPlanBuyRestaurant = async (req, res) => {
@@ -897,6 +904,75 @@ const getAllSubscription = async (req, res) => {
     const subscriptions = await Admin_Plan_buy_Restaurant.find(query)
       .sort({ CreateAt: -1 });
 
+    // Helper function to populate user with all IDs
+    const populateUser = async (user) => {
+      if (!user) return null;
+      
+      const [responsibility, role, language, currency, country, state, city] = await Promise.all([
+        Responsibility.findOne({ Responsibility_id: user.Responsibility_id }),
+        Role.findOne({ Role_id: user.Role_id }),
+        Language.findOne({ Language_id: user.Language_id }),
+        user.currency_id ? Currency.findOne({ currency_id: user.currency_id }) : null,
+        Country.findOne({ Country_id: user.Country_id }),
+        State.findOne({ State_id: user.State_id }),
+        City.findOne({ City_id: user.City_id })
+      ]);
+
+      const userResponse = user.toObject();
+      delete userResponse.password; // Remove password
+      
+      userResponse.Responsibility_id = responsibility ? {
+        Responsibility_id: responsibility.Responsibility_id,
+        Responsibility_name: responsibility.Responsibility_name
+      } : null;
+      userResponse.Role_id = role ? {
+        Role_id: role.Role_id,
+        role_name: role.role_name
+      } : null;
+      userResponse.Language_id = language ? {
+        Language_id: language.Language_id,
+        Language_name: language.Language_name
+      } : null;
+      userResponse.currency_id = currency ? {
+        currency_id: currency.currency_id,
+        name: currency.name,
+        icon: currency.icon
+      } : null;
+      userResponse.Country_id = country ? {
+        Country_id: country.Country_id,
+        Country_name: country.Country_name,
+        code: country.code
+      } : null;
+      userResponse.State_id = state ? {
+        State_id: state.State_id,
+        state_name: state.state_name,
+        Code: state.Code
+      } : null;
+      userResponse.City_id = city ? {
+        City_id: city.City_id,
+        City_name: city.City_name,
+        Code: city.Code
+      } : null;
+
+      return userResponse;
+    };
+
+    // Helper function to populate transaction with all IDs
+    const populateTransaction = async (transaction) => {
+      if (!transaction) return null;
+
+      const [transactionUser, transactionCreatedBy] = await Promise.all([
+        User.findOne({ user_id: transaction.user_id }),
+        User.findOne({ user_id: transaction.created_by })
+      ]);
+
+      const transactionResponse = transaction.toObject();
+      transactionResponse.user_id = await populateUser(transactionUser);
+      transactionResponse.created_by = await populateUser(transactionCreatedBy);
+
+      return transactionResponse;
+    };
+
     // Fetch related data for all subscriptions
     const subscriptionsWithDetails = await Promise.all(
       subscriptions.map(async (subscription) => {
@@ -908,31 +984,30 @@ const getAllSubscription = async (req, res) => {
         ]);
 
         const subscriptionResponse = subscription.toObject();
-        subscriptionResponse.CreateBy = createByUser ? {
-          user_id: createByUser.user_id,
-          Name: createByUser.Name,
-          email: createByUser.email
-        } : null;
-        subscriptionResponse.UpdatedBy = updatedByUser ? {
-          user_id: updatedByUser.user_id,
-          Name: updatedByUser.Name,
-          email: updatedByUser.email
-        } : null;
+        
+        // Populate CreateBy with all IDs
+        subscriptionResponse.CreateBy = await populateUser(createByUser);
+        
+        // Populate UpdatedBy with all IDs
+        subscriptionResponse.UpdatedBy = await populateUser(updatedByUser);
+        
+        // Populate Admin_Plan_id with all fields
         subscriptionResponse.Admin_Plan_id = adminPlanData ? {
           Admin_Plan_id: adminPlanData.Admin_Plan_id,
           PlanName: adminPlanData.PlanName,
           Description: adminPlanData.Description,
           Price: adminPlanData.Price,
-          expiry_day: adminPlanData.expiry_day
+          expiry_day: adminPlanData.expiry_day,
+          fesility: adminPlanData.fesility,
+          Status: adminPlanData.Status,
+          CreateBy: adminPlanData.CreateBy,
+          CreateAt: adminPlanData.CreateAt,
+          UpdatedBy: adminPlanData.UpdatedBy,
+          UpdatedAt: adminPlanData.UpdatedAt
         } : null;
-        subscriptionResponse.Transaction = transaction ? {
-          transagtion_id: transaction.transagtion_id,
-          amount: transaction.amount,
-          status: transaction.status,
-          payment_method: transaction.payment_method,
-          transactionType: transaction.transactionType,
-          transaction_date: transaction.transaction_date
-        } : null;
+        
+        // Populate Transaction with all IDs
+        subscriptionResponse.Transaction = await populateTransaction(transaction);
 
         // Calculate remaining days if expiry_date exists
         if (subscription.expiry_date) {
@@ -980,6 +1055,109 @@ const getAllSubscription = async (req, res) => {
   }
 };
 
+// Plan Heat Map by Cities
+const Plan_Heat_cityes = async (req, res) => {
+  try {
+    // Get all plan purchases with successful payment
+    const planPurchases = await Admin_Plan_buy_Restaurant.find({
+      paymentStatus: true,
+      Status: true
+    });
+
+    if (planPurchases.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'No plan purchases found',
+        count: 0,
+        data: []
+      });
+    }
+
+    // Get all unique user IDs who purchased plans
+    const userIds = [...new Set(planPurchases.map(plan => plan.CreateBy))];
+    
+    // Get users with their city information
+    const users = await User.find({
+      user_id: { $in: userIds },
+      Status: true
+    });
+
+    // Group plan purchases by city
+    const cityPlanCount = {};
+    
+    planPurchases.forEach(plan => {
+      const user = users.find(u => u.user_id === plan.CreateBy);
+      if (user && user.City_id) {
+        const cityId = user.City_id;
+        if (!cityPlanCount[cityId]) {
+          cityPlanCount[cityId] = {
+            City_id: cityId,
+            count: 0,
+            plans: []
+          };
+        }
+        cityPlanCount[cityId].count++;
+        cityPlanCount[cityId].plans.push({
+          Admin_Plan_buy_Restaurant_id: plan.Admin_Plan_buy_Restaurant_id,
+          Admin_Plan_id: plan.Admin_Plan_id,
+          user_id: plan.CreateBy,
+          expiry_date: plan.expiry_date,
+          isActive: plan.isActive
+        });
+      }
+    });
+
+    // Get all city IDs that have plan purchases
+    const cityIds = Object.keys(cityPlanCount).map(id => parseInt(id));
+    
+    // Fetch city details
+    const cities = await City.find({
+      City_id: { $in: cityIds },
+      Status: true
+    });
+
+    // Create city map for quick lookup
+    const cityMap = cities.reduce((map, city) => {
+      map[city.City_id] = city;
+      return map;
+    }, {});
+
+    // Build response data for heat map chart
+    const heatMapData = Object.values(cityPlanCount).map(cityData => {
+      const city = cityMap[cityData.City_id];
+      return {
+        City_id: cityData.City_id,
+        City_name: city ? city.City_name : 'Unknown',
+        City_code: city ? city.Code : null,
+        PlanCount: cityData.count,
+        Plans: cityData.plans
+      };
+    }).sort((a, b) => b.PlanCount - a.PlanCount); // Sort by count descending
+
+    // Calculate total plans
+    const totalPlans = planPurchases.length;
+    const totalCities = heatMapData.length;
+
+    res.status(200).json({
+      success: true,
+      message: 'Plan heat map by cities retrieved successfully',
+      summary: {
+        totalPlans: totalPlans,
+        totalCities: totalCities,
+        averagePlansPerCity: totalCities > 0 ? parseFloat((totalPlans / totalCities).toFixed(2)) : 0
+      },
+      count: heatMapData.length,
+      data: heatMapData
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching plan heat map by cities',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   createAdminPlanBuyRestaurant,
   updateAdminPlanBuyRestaurant,
@@ -991,6 +1169,7 @@ module.exports = {
   isActiveByAuth,
   TotalRenewPlanByauth,
   MatchPlanDay_and_IsAcitveExpirydate,
-  getAllSubscription
+  getAllSubscription,
+  Plan_Heat_cityes
 };
 

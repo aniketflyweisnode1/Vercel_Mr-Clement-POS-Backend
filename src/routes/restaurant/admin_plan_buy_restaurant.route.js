@@ -12,7 +12,8 @@ const {
   isActiveByAuth,
   TotalRenewPlanByauth,
   MatchPlanDay_and_IsAcitveExpirydate,
-  getAllSubscription
+  getAllSubscription,
+  Plan_Heat_cityes
 } = require('../../controllers/Admin_Plan_buy_Restaurant.Controller');
 
 // Create Admin Plan Buy Restaurant (with auth)
@@ -47,6 +48,9 @@ router.get('/MatchPlanDay_and_IsAcitveExpirydate', auth, MatchPlanDay_and_IsAcit
 
 // Get All Subscriptions with Date Filter (with auth)
 router.get('/getAllSubscription', auth, getAllSubscription);
+
+// Plan Heat Map by Cities (with auth)
+router.get('/Plan_Heat_cityes', auth, Plan_Heat_cityes);
 
 module.exports = router;
 

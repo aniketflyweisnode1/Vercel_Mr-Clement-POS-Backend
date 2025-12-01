@@ -6,7 +6,11 @@ const {
   reportsMonth, 
   reportsSixMonth, 
   reportsOneYear,
-  restaurantPerformance
+  restaurant_performoance,
+  restaurant_Top_Performer,
+  reports,
+  cityWiseUsageReport,
+  employeePerformance
 } = require('../../controllers/Reports.Controller');
 
 // Restaurant Reports routes 16/09/2025
@@ -15,7 +19,19 @@ router.get('/reports_month', auth, reportsMonth);
 router.get('/reports_six_month', auth, reportsSixMonth);
 router.get('/reports_one_year', auth, reportsOneYear);
 
-// Restaurant Performance API
-router.get('/Restaurant_Performance/:id', auth, restaurantPerformance);
+// Restaurant Performance API with filters and chart
+router.get('/restaurant_performoance/:id', auth, restaurant_performoance);
+
+// Restaurant Top Performers API
+router.get('/restaurant_Top_Performer', auth, restaurant_Top_Performer);
+
+// Reports API
+router.get('/reports', auth, reports);
+
+// City Wise Usage Report
+router.get('/city-wise-usage', auth, cityWiseUsageReport);
+
+// Employee Performance API
+router.get('/employee-performance/:employeeId', auth, employeePerformance);
 
 module.exports = router;

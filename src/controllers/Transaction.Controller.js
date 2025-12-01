@@ -393,12 +393,58 @@ const deleteTransaction = async (req, res) => {
   }
 };
 
+// Get Transaction Chart (total transactions value for this month and last month)
+const getTransactionChart = async (req, res) => {
+  try {
+    const now = new Date();
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+    // Get current month transactions
+    const currentMonthTransactions = await Transaction.find({
+      status: 'success',
+      transaction_date: { $gte: currentMonthStart, $lt: nextMonthStart }
+    });
+
+    // Get last month transactions
+    const lastMonthTransactions = await Transaction.find({
+      status: 'success',
+      transaction_date: { $gte: lastMonthStart, $lt: currentMonthStart }
+    });
+
+    const month = currentMonthTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+    const lastMonth = lastMonthTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+
+    const percentageChange = lastMonth > 0 
+      ? parseFloat((((month - lastMonth) / lastMonth) * 100).toFixed(2))
+      : (month > 0 ? 100 : 0);
+
+    res.status(200).json({
+      success: true,
+      message: 'Transaction chart retrieved successfully',
+      Chart: {
+        month: parseFloat(month.toFixed(2)),
+        lastMonth: parseFloat(lastMonth.toFixed(2)),
+        percentageChange
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching transaction chart',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   createTransaction,
   updateTransaction,
   getTransactionById,
   getAllTransactions,
   getTransactionByAuth,
-  deleteTransaction
+  deleteTransaction,
+  getTransactionChart
 };
 

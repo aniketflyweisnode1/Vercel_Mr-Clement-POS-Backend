@@ -77,9 +77,6 @@ router.get('/employees/client/:clientId', auth, getEmployeesByClientId);
 router.get('/employeedetailsbyid/:id', auth, getEmployeeDetailsById);
 
 // Authentication routes
-
-
-
 router.post('/login', validateLogin, handleValidationErrors, loginUser);
 router.post('/logout', auth, logout);
 router.put('/change-password', auth, validateChangePassword, handleValidationErrors, changePassword);

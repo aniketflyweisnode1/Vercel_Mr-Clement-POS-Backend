@@ -112,7 +112,8 @@ const logoutUser = async (req, res) => {
 // Change Password (for authenticated users)
 const changePassword = async (req, res) => {
   try {
-    const { currentPassword, newPassword } = req.body;
+    const { oldPassword, newPassword } = req.body;
+    const currentPassword = oldPassword; // Support both oldPassword and currentPassword
     const userId = req.user.user_id;
 
     const user = await User.findOne({ user_id: userId });

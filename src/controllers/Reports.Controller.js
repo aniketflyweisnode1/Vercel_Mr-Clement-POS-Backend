@@ -7,6 +7,10 @@ const Invoices = require('../models/Invoices.model');
 const Clients = require('../models/Clients.model');
 const User = require('../models/User.model');
 const Role = require('../models/Role.model');
+const Admin_Plan_buy_Restaurant = require('../models/Admin_Plan_buy_Restaurant.model');
+const Admin_Plan = require('../models/Admin_Plan.model');
+const City = require('../models/City.model');
+const Clock = require('../models/Clock.model');
 
 // Helper function to get date range based on period
 const getDateRange = (period) => {
@@ -613,10 +617,791 @@ const restaurantPerformance = async (req, res) => {
   }
 };
 
+// Helper function to get date range for restaurant performance
+const getRestaurantPerformanceDateRange = (filter) => {
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  
+  switch (filter) {
+    case 'Day':
+    case 'day':
+      return {
+        start: startOfDay,
+        end: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000)
+      };
+    case 'Week':
+    case 'week':
+      const dayOfWeek = now.getDay();
+      const startOfWeek = new Date(startOfDay);
+      startOfWeek.setDate(startOfDay.getDate() - dayOfWeek);
+      return {
+        start: startOfWeek,
+        end: new Date(startOfWeek.getTime() + 7 * 24 * 60 * 60 * 1000)
+      };
+    case 'Month':
+    case 'month':
+      return {
+        start: new Date(now.getFullYear(), now.getMonth(), 1),
+        end: new Date(now.getFullYear(), now.getMonth() + 1, 1)
+      };
+    case '6 Month':
+    case '6month':
+    case '6Month':
+      return {
+        start: new Date(now.getFullYear(), now.getMonth() - 6, 1),
+        end: new Date(now.getFullYear(), now.getMonth() + 1, 1)
+      };
+    default:
+      return {
+        start: startOfDay,
+        end: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000)
+      };
+  }
+};
+
+// Restaurant Performance API with filters and chart
+const restaurant_performoance = async (req, res) => {
+  try {
+    const { filter = 'Day' } = req.query; // filter: Day, Week, Month, 6 Month
+    const { id } = req.params; // restaurant ID
+    const parsedRestaurantId = parseInt(id);
+
+    if (!id || isNaN(parsedRestaurantId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid restaurant ID is required'
+      });
+    }
+
+    // Verify restaurant user exists and has restaurant role
+    const restaurantUser = await User.findOne({ user_id: parsedRestaurantId });
+    
+    if (!restaurantUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'Restaurant not found'
+      });
+    }
+
+    const restaurantRole = await Role.findOne({ Role_id: restaurantUser.Role_id });
+    if (!restaurantRole || restaurantRole.role_name?.toLowerCase() !== 'restaurant') {
+      return res.status(400).json({
+        success: false,
+        message: 'Provided user is not associated with a restaurant role'
+      });
+    }
+
+    // Get date range based on filter
+    const dateRange = getRestaurantPerformanceDateRange(filter);
+
+    // Get all employees created by this restaurant
+    const employees = await User.find({ 
+      CreateBy: parsedRestaurantId, 
+      Status: true 
+    });
+    const employeeIds = employees.map(emp => emp.user_id);
+
+    // Get orders filtered by restaurant and date range
+    const posOrderQuery = { 
+      Restaurant_id: parsedRestaurantId,
+      CreateAt: { $gte: dateRange.start, $lt: dateRange.end },
+      Status: true 
+    };
+    
+    const quickOrderQuery = { 
+      CreateAt: { $gte: dateRange.start, $lt: dateRange.end },
+      Status: true 
+    };
+    
+    if (employeeIds.length > 0) {
+      quickOrderQuery['get_order_Employee_id'] = { $in: employeeIds };
+    } else {
+      quickOrderQuery['get_order_Employee_id'] = { $in: [-1] };
+    }
+
+    const [posOrders, quickOrders] = await Promise.all([
+      Pos_Point_sales_Order.find(posOrderQuery),
+      Quick_Order.find(quickOrderQuery)
+    ]);
+
+    // Calculate TotalSales (total revenue)
+    const totalSales = [...posOrders, ...quickOrders].reduce(
+      (sum, order) => sum + (order.Total || 0), 
+      0
+    );
+
+    // Calculate TotalOrders
+    const totalOrders = posOrders.length + quickOrders.length;
+
+    // Get TotalActiveRestourentClient - filter clients created by restaurant or its employees within date range
+    const clientCreators = [parsedRestaurantId, ...employeeIds];
+    const totalActiveRestourentClient = await Clients.countDocuments({ 
+      CreateBy: { $in: clientCreators },
+      CreateAt: { $gte: dateRange.start, $lt: dateRange.end },
+      Status: true 
+    });
+
+    // Get customers - filter by restaurant employees and date range
+    const customerFilter = { 
+      CreateAt: { $gte: dateRange.start, $lt: dateRange.end },
+      Status: true 
+    };
+    if (employeeIds.length > 0) {
+      customerFilter.CreateBy = { $in: employeeIds };
+    }
+    const allCustomers = await Customer.find(customerFilter);
+
+    // Calculate new customers (customers created in the date range)
+    const newCustomers = allCustomers.length;
+
+    // Calculate repeat customers (customers with more than 1 order in the date range)
+    const customerOrderCounts = {};
+    
+    // Count orders per customer from POS orders
+    posOrders.forEach(order => {
+      if (order.Customer_id) {
+        customerOrderCounts[order.Customer_id] = (customerOrderCounts[order.Customer_id] || 0) + 1;
+      }
+    });
+
+    // Count orders per customer from Quick orders
+    quickOrders.forEach(order => {
+      if (order.client_mobile_no) {
+        const customer = allCustomers.find(c => c.phone === order.client_mobile_no);
+        if (customer) {
+          customerOrderCounts[customer.Customer_id] = (customerOrderCounts[customer.Customer_id] || 0) + 1;
+        }
+      }
+    });
+
+    // Count repeat customers (customers with more than 1 order)
+    const repeactCustomers = Object.values(customerOrderCounts).filter(count => count > 1).length;
+
+    // Calculate Average Order Value
+    const avgOrderValue = totalOrders > 0 
+      ? parseFloat((totalSales / totalOrders).toFixed(2))
+      : 0;
+
+    // Create Restaurant_performoance_chart with [Earning, Hour] format
+    const Restaurant_performoance_chart = [];
+    
+    // Initialize earnings for each hour (0-23)
+    const hourlyEarnings = {};
+    for (let hour = 0; hour < 24; hour++) {
+      hourlyEarnings[hour] = 0;
+    }
+
+    // Calculate earnings by hour from all orders
+    [...posOrders, ...quickOrders].forEach(order => {
+      if (order.CreateAt) {
+        const orderDate = new Date(order.CreateAt);
+        const hour = orderDate.getHours();
+        hourlyEarnings[hour] = (hourlyEarnings[hour] || 0) + (order.Total || 0);
+      }
+    });
+
+    // Format chart data as [Earning, Hour]
+    for (let hour = 0; hour < 24; hour++) {
+      Restaurant_performoance_chart.push({
+        Hour: hour,
+        Earning: parseFloat(hourlyEarnings[hour].toFixed(2))
+      });
+    }
+
+    // Prepare response
+    const performanceData = {
+      TotalSales: parseFloat(totalSales.toFixed(2)),
+      TotalOrders: totalOrders,
+      TotalActiveRestourentClient: totalActiveRestourentClient,
+      NewCustomers: newCustomers,
+      repeactCustomers: repeactCustomers,
+      AvgOrderValue: parseFloat(avgOrderValue.toFixed(2)),
+      Restaurant_performoance_chart: Restaurant_performoance_chart,
+      filter: filter,
+      dateRange: {
+        start: dateRange.start,
+        end: dateRange.end
+      }
+    };
+
+    res.status(200).json({
+      success: true,
+      message: 'Restaurant performance data retrieved successfully',
+      data: performanceData
+    });
+  } catch (error) {
+    console.error('Error fetching restaurant performance:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching restaurant performance data',
+      error: error.message
+    });
+  }
+};
+
+// Restaurant Top Performers API
+const restaurant_Top_Performer = async (req, res) => {
+  try {
+    // Get restaurant role
+    const restaurantRole = await Role.findOne({ 
+      role_name: { $regex: /^restaurant$/i } 
+    });
+
+    if (!restaurantRole) {
+      return res.status(404).json({
+        success: false,
+        message: 'Restaurant role not found'
+      });
+    }
+
+    // Get all restaurant users
+    const restaurantUsers = await User.find({
+      Role_id: restaurantRole.Role_id,
+      Status: true
+    });
+
+    if (restaurantUsers.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'No restaurants found',
+        count: 0,
+        data: []
+      });
+    }
+
+    // Process each restaurant to calculate total sales and get renewal date
+    const restaurantPerformers = await Promise.all(
+      restaurantUsers.map(async (restaurant) => {
+        const restaurantId = restaurant.user_id;
+
+        // Get all employees created by this restaurant
+        const employees = await User.find({
+          CreateBy: restaurantId,
+          Status: true
+        });
+        const employeeIds = employees.map(emp => emp.user_id);
+
+        // Get POS orders for this restaurant
+        const posOrders = await Pos_Point_sales_Order.find({
+          Restaurant_id: restaurantId,
+          Status: true
+        });
+
+        // Get Quick orders for this restaurant (via employees)
+        let quickOrders = [];
+        if (employeeIds.length > 0) {
+          quickOrders = await Quick_Order.find({
+            get_order_Employee_id: { $in: employeeIds },
+            Status: true
+          });
+        }
+
+        // Calculate total sales
+        const totalSales = [...posOrders, ...quickOrders].reduce(
+          (sum, order) => sum + (order.Total || 0),
+          0
+        );
+
+        // Get renewal date from Admin_Plan_buy_Restaurant
+        // Get the most recent active plan with successful payment
+        const activePlan = await Admin_Plan_buy_Restaurant.findOne({
+          CreateBy: restaurantId,
+          isActive: true,
+          paymentStatus: true,
+          Status: true
+        }).sort({ expiry_date: -1 });
+
+        const renewalDate = activePlan?.expiry_date || null;
+
+        return {
+          restourent_id: restaurantId,
+          totalesale: parseFloat(totalSales.toFixed(2)),
+          renewaldate: renewalDate
+        };
+      })
+    );
+
+    // Sort by total sales descending (top performers first)
+    restaurantPerformers.sort((a, b) => b.totalesale - a.totalesale);
+
+    res.status(200).json({
+      success: true,
+      message: 'Restaurant top performers retrieved successfully',
+      count: restaurantPerformers.length,
+      data: restaurantPerformers
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching restaurant top performers',
+      error: error.message
+    });
+  }
+};
+
+// Reports API with Active/Inactive Restaurants and Charts
+const reports = async (req, res) => {
+  try {
+    // Get restaurant role
+    const restaurantRole = await Role.findOne({ 
+      role_name: { $regex: /^restaurant$/i } 
+    });
+
+    if (!restaurantRole) {
+      return res.status(404).json({
+        success: false,
+        message: 'Restaurant role not found'
+      });
+    }
+
+    // Get all restaurant users
+    const restaurantUsers = await User.find({
+      Role_id: restaurantRole.Role_id,
+      Status: true
+    });
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    // Calculate active and inactive restaurants
+    let TotalActiverestaurant = 0;
+    let TotalInacitverestaurant = 0;
+    let totalRenewals = 0;
+
+    const activeRestaurants = [];
+    const inactiveRestaurants = [];
+
+    for (const restaurant of restaurantUsers) {
+      const activePlan = await Admin_Plan_buy_Restaurant.findOne({
+        CreateBy: restaurant.user_id,
+        isActive: true,
+        paymentStatus: true,
+        Status: true
+      }).sort({ CreateAt: -1 });
+
+      let isActive = false;
+      if (activePlan && activePlan.expiry_date) {
+        const expiryDate = new Date(activePlan.expiry_date);
+        if (expiryDate > now) {
+          isActive = true;
+        }
+      } else if (activePlan && !activePlan.expiry_date) {
+        isActive = true; // No expiry means active
+      }
+
+      if (isActive) {
+        TotalActiverestaurant++;
+        activeRestaurants.push(restaurant.user_id);
+      } else {
+        TotalInacitverestaurant++;
+        inactiveRestaurants.push(restaurant.user_id);
+      }
+
+      // Count renewals (plans with paymentStatus = true)
+      const renewals = await Admin_Plan_buy_Restaurant.countDocuments({
+        CreateBy: restaurant.user_id,
+        paymentStatus: true,
+        Status: true
+      });
+      if (renewals > 1) {
+        totalRenewals += renewals - 1; // Subtract 1 for initial purchase
+      }
+    }
+
+    const TotalRenewalRate = restaurantUsers.length > 0 
+      ? parseFloat((totalRenewals / restaurantUsers.length).toFixed(2))
+      : 0;
+
+    // Helper function to calculate date ranges
+    const getDateRange = (period) => {
+      const start = new Date(today);
+      const end = new Date(today);
+      
+      switch (period) {
+        case 'week':
+          start.setDate(today.getDate() - 7);
+          break;
+        case 'month':
+          start.setMonth(today.getMonth() - 1);
+          break;
+        case 'halfYear':
+          start.setMonth(today.getMonth() - 6);
+          break;
+        case 'year':
+          start.setFullYear(today.getFullYear() - 1);
+          break;
+        default:
+          start.setDate(today.getDate() - 7);
+      }
+      return { start, end };
+    };
+
+    // Helper function to calculate percentage change
+    const calculatePercentageChange = (current, previous) => {
+      if (previous === 0) return current > 0 ? 100 : 0;
+      return parseFloat((((current - previous) / previous) * 100).toFixed(2));
+    };
+
+    // Calculate active chart data
+    const calculateActiveChart = async (period) => {
+      const { start, end } = getDateRange(period);
+      const previousStart = new Date(start);
+      previousStart.setTime(previousStart.getTime() - (end - start));
+
+      // Get new clients (restaurants created in period)
+      const newClients = await User.countDocuments({
+        Role_id: restaurantRole.Role_id,
+        Status: true,
+        CreateAt: { $gte: start, $lt: end }
+      });
+
+      // Get renewed clients (restaurants with plan purchases in period)
+      const renewedClients = await Admin_Plan_buy_Restaurant.distinct('CreateBy', {
+        paymentStatus: true,
+        Status: true,
+        CreateAt: { $gte: start, $lt: end }
+      });
+
+      // Previous period data
+      const previousNewClients = await User.countDocuments({
+        Role_id: restaurantRole.Role_id,
+        Status: true,
+        CreateAt: { $gte: previousStart, $lt: start }
+      });
+
+      const previousRenewedClients = await Admin_Plan_buy_Restaurant.distinct('CreateBy', {
+        paymentStatus: true,
+        Status: true,
+        CreateAt: { $gte: previousStart, $lt: start }
+      });
+
+      const newClientsPercentage = calculatePercentageChange(newClients, previousNewClients);
+      const renewedClientsPercentage = calculatePercentageChange(renewedClients.length, previousRenewedClients.length);
+
+      return {
+        newClients,
+        renewedClients: renewedClients.length,
+        percentageChange: parseFloat(((newClientsPercentage + renewedClientsPercentage) / 2).toFixed(2))
+      };
+    };
+
+    // Calculate inactive chart data
+    const calculateInactiveChart = async (period) => {
+      const { start, end } = getDateRange(period);
+      const previousStart = new Date(start);
+      previousStart.setTime(previousStart.getTime() - (end - start));
+
+      // Get inactive clients (restaurants with expired or no active plans)
+      let inactiveClients = 0;
+      const restaurantsInPeriod = await User.find({
+        Role_id: restaurantRole.Role_id,
+        Status: true,
+        CreateAt: { $gte: start, $lt: end }
+      });
+
+      for (const restaurant of restaurantsInPeriod) {
+        const activePlan = await Admin_Plan_buy_Restaurant.findOne({
+          CreateBy: restaurant.user_id,
+          isActive: true,
+          paymentStatus: true,
+          Status: true
+        }).sort({ CreateAt: -1 });
+
+        let isActive = false;
+        if (activePlan && activePlan.expiry_date) {
+          const expiryDate = new Date(activePlan.expiry_date);
+          if (expiryDate > now) {
+            isActive = true;
+          }
+        } else if (activePlan && !activePlan.expiry_date) {
+          isActive = true;
+        }
+
+        if (!isActive) {
+          inactiveClients++;
+        }
+      }
+
+      // Previous period
+      const previousRestaurants = await User.find({
+        Role_id: restaurantRole.Role_id,
+        Status: true,
+        CreateAt: { $gte: previousStart, $lt: start }
+      });
+
+      let previousInactiveClients = 0;
+      for (const restaurant of previousRestaurants) {
+        const activePlan = await Admin_Plan_buy_Restaurant.findOne({
+          CreateBy: restaurant.user_id,
+          isActive: true,
+          paymentStatus: true,
+          Status: true
+        }).sort({ CreateAt: -1 });
+
+        let isActive = false;
+        if (activePlan && activePlan.expiry_date) {
+          const expiryDate = new Date(activePlan.expiry_date);
+          if (expiryDate > now) {
+            isActive = true;
+          }
+        } else if (activePlan && !activePlan.expiry_date) {
+          isActive = true;
+        }
+
+        if (!isActive) {
+          previousInactiveClients++;
+        }
+      }
+
+      const percentageChange = calculatePercentageChange(inactiveClients, previousInactiveClients);
+
+      return {
+        inactiveClients,
+        percentageChange
+      };
+    };
+
+    // Generate chart data
+    const [activeWeek, activeMonth, activeHalfYear, activeYear] = await Promise.all([
+      calculateActiveChart('week'),
+      calculateActiveChart('month'),
+      calculateActiveChart('halfYear'),
+      calculateActiveChart('year')
+    ]);
+
+    const [inactiveWeek, inactiveMonth, inactiveHalfYear, inactiveYear] = await Promise.all([
+      calculateInactiveChart('week'),
+      calculateInactiveChart('month'),
+      calculateInactiveChart('halfYear'),
+      calculateInactiveChart('year')
+    ]);
+
+    res.status(200).json({
+      success: true,
+      message: 'Reports retrieved successfully',
+      reports: {
+        TotalActiverestaurant,
+        TotalInacitverestaurant,
+        TotalRenewalRate
+      },
+      Chart: {
+        active: {
+          week: activeWeek,
+          month: activeMonth,
+          halfYear: activeHalfYear,
+          year: activeYear
+        },
+        inactive: {
+          week: inactiveWeek,
+          month: inactiveMonth,
+          halfYear: inactiveHalfYear,
+          year: inactiveYear
+        }
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching reports',
+      error: error.message
+    });
+  }
+};
+
+// City Wise Usage Report
+const cityWiseUsageReport = async (req, res) => {
+  try {
+    // Get restaurant role
+    const restaurantRole = await Role.findOne({ 
+      role_name: { $regex: /^restaurant$/i } 
+    });
+
+    if (!restaurantRole) {
+      return res.status(404).json({
+        success: false,
+        message: 'Restaurant role not found'
+      });
+    }
+
+    // Get all restaurant users (clients)
+    const restaurantUsers = await User.find({
+      Role_id: restaurantRole.Role_id,
+      Status: true
+    });
+
+    // Group restaurants by city
+    const cityRestaurantCount = {};
+    restaurantUsers.forEach(restaurant => {
+      const cityId = restaurant.City_id;
+      if (!cityRestaurantCount[cityId]) {
+        cityRestaurantCount[cityId] = 0;
+      }
+      cityRestaurantCount[cityId]++;
+    });
+
+    // Get city details
+    const cityIds = Object.keys(cityRestaurantCount).map(id => parseInt(id));
+    const cities = await City.find({
+      City_id: { $in: cityIds },
+      Status: true
+    });
+
+    const cityMap = cities.reduce((map, city) => {
+      map[city.City_id] = city;
+      return map;
+    }, {});
+
+    // Build response
+    const cityWiseData = Object.entries(cityRestaurantCount).map(([cityId, count]) => {
+      const city = cityMap[parseInt(cityId)];
+      return {
+        City_id: parseInt(cityId),
+        City_name: city ? city.City_name : 'Unknown',
+        City_code: city ? city.Code : null,
+        restaurants_count: count
+      };
+    }).sort((a, b) => b.restaurants_count - a.restaurants_count);
+
+    res.status(200).json({
+      success: true,
+      message: 'City wise usage report retrieved successfully',
+      count: cityWiseData.length,
+      data: cityWiseData
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching city wise usage report',
+      error: error.message
+    });
+  }
+};
+
+// Employee Performance API
+const employeePerformance = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const parsedEmployeeId = parseInt(employeeId);
+
+    if (!employeeId || isNaN(parsedEmployeeId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid employee ID is required'
+      });
+    }
+
+    // Verify employee exists
+    const employee = await User.findOne({ user_id: parsedEmployeeId, Status: true });
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'Employee not found'
+      });
+    }
+
+    // Get POS orders by employee (CreateBy)
+    const posOrders = await Pos_Point_sales_Order.find({
+      CreateBy: parsedEmployeeId,
+      Status: true
+    });
+
+    // Get Quick orders by employee
+    const quickOrders = await Quick_Order.find({
+      get_order_Employee_id: parsedEmployeeId,
+      Status: true
+    });
+
+    // Calculate totalSalesContributed
+    const totalSalesContributed = [...posOrders, ...quickOrders].reduce(
+      (sum, order) => sum + (order.Total || 0),
+      0
+    );
+
+    // Calculate TotalOrdersTaken
+    const TotalOrdersTaken = posOrders.length + quickOrders.length;
+
+    // Calculate TotalTablesServed (unique tables from orders)
+    const tableSet = new Set();
+    posOrders.forEach(order => {
+      if (order.Table_id) tableSet.add(order.Table_id);
+    });
+    quickOrders.forEach(order => {
+      if (order.Table_id) tableSet.add(order.Table_id);
+    });
+    const TotalTablesServed = tableSet.size;
+
+    // Calculate AvgWorkingHrs from Clock records
+    const clockRecords = await Clock.find({
+      user_id: parsedEmployeeId,
+      Status: true,
+      in_time: { $exists: true },
+      out_time: { $exists: true }
+    }).sort({ date: -1 });
+
+    // Group by day and calculate average
+    const dailyHours = [];
+    const hoursByDay = {};
+
+    clockRecords.forEach(record => {
+      const day = new Date(record.date).toISOString().split('T')[0];
+      if (!hoursByDay[day]) {
+        hoursByDay[day] = [];
+      }
+      const inTime = new Date(record.in_time);
+      const outTime = new Date(record.out_time);
+      const hours = (outTime - inTime) / (1000 * 60 * 60);
+      hoursByDay[day].push(hours);
+    });
+
+    Object.entries(hoursByDay).forEach(([day, hoursArray]) => {
+      const totalHours = hoursArray.reduce((sum, h) => sum + h, 0);
+      const avgHours = totalHours / hoursArray.length;
+      dailyHours.push({
+        day,
+        hours: parseFloat(avgHours.toFixed(2))
+      });
+    });
+
+    // Calculate total tips earned (assuming tips are in orders or separate model)
+    // For now, we'll check if there's a tip field in orders
+    let totalTipsEarned = 0;
+    [...posOrders, ...quickOrders].forEach(order => {
+      if (order.tip || order.Tip) {
+        totalTipsEarned += parseFloat(order.tip || order.Tip || 0);
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Employee performance retrieved successfully',
+      data: {
+        employee_id: parsedEmployeeId,
+        employee_name: `${employee.Name} ${employee.last_name}`,
+        totalSalesContributed: parseFloat(totalSalesContributed.toFixed(2)),
+        TotalOrdersTaken,
+        TotalTablesServed,
+        AvgWorkingHrs: dailyHours,
+        totalTipsEarned: parseFloat(totalTipsEarned.toFixed(2))
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching employee performance',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   reportsToday,
   reportsMonth,
   reportsSixMonth,
   reportsOneYear,
-  restaurantPerformance
+  restaurantPerformance,
+  restaurant_performoance,
+  restaurant_Top_Performer,
+  reports,
+  cityWiseUsageReport,
+  employeePerformance
 };

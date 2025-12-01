@@ -14,6 +14,7 @@ const createMyDevices = async (req, res) => {
       Device_browser,
       location,
       IPAddress,
+      price,
       Status 
     } = req.body;
     const userId = req.user.user_id;
@@ -42,6 +43,7 @@ const createMyDevices = async (req, res) => {
       if (timeZone !== undefined) existingDevice.timeZone = timeZone;
       if (Device_browser !== undefined) existingDevice.Device_browser = Device_browser;
       if (location !== undefined) existingDevice.location = location;
+      if (price !== undefined) existingDevice.price = parseFloat(price) || 0;
       if (Status !== undefined) existingDevice.Status = Status;
       
       existingDevice.UpdatedBy = userId;
@@ -68,6 +70,7 @@ const createMyDevices = async (req, res) => {
       Device_browser,
       location,
       IPAddress,
+      price: price !== undefined ? parseFloat(price) : 0,
       Status: Status !== undefined ? Status : true,
       CreateBy: userId
     });
@@ -103,6 +106,7 @@ const updateMyDevices = async (req, res) => {
       Device_browser,
       location,
       IPAddress,
+      price,
       Status 
     } = req.body;
     const userId = req.user.user_id;
@@ -132,6 +136,7 @@ const updateMyDevices = async (req, res) => {
     if (Device_browser !== undefined) myDevices.Device_browser = Device_browser;
     if (location !== undefined) myDevices.location = location;
     if (IPAddress !== undefined) myDevices.IPAddress = IPAddress;
+    if (price !== undefined) myDevices.price = parseFloat(price) || 0;
     if (Status !== undefined) myDevices.Status = Status;
     
     myDevices.UpdatedBy = userId;

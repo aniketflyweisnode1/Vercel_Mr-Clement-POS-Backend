@@ -12,7 +12,8 @@ const {
   getSupportTicketById,
   getAllSupportTickets,
   getSupportTicketByAuth,
-  deleteSupportTicket
+  deleteSupportTicket,
+  getTicketsChart
 } = require('../../controllers/support_ticket.Controller');
 
 // Create support ticket (with auth)
@@ -32,5 +33,8 @@ router.get('/getbyauth', auth, getSupportTicketByAuth);
 
 // Delete support ticket (with auth)
 router.delete('/delete/:id', auth, deleteSupportTicket);
+
+// Get Tickets Chart (with auth)
+router.get('/chart', auth, getTicketsChart);
 
 module.exports = router;
