@@ -20,7 +20,7 @@ const adminPlanSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
-  expiry_date: {
+  expiry_day: {
     type: Date
   },
   fesility: [{

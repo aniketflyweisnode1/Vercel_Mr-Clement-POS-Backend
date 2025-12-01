@@ -4,7 +4,7 @@ const User = require('../models/User.model');
 // Create Admin Plan
 const createAdminPlan = async (req, res) => {
   try {
-    const { PlanName, Description, Price, expiry_date, fesility } = req.body;
+    const { PlanName, Description, Price, expiry_day, fesility } = req.body;
     const userId = req.user.user_id;
 
     if (!PlanName) {
@@ -51,7 +51,7 @@ const createAdminPlan = async (req, res) => {
       PlanName,
       Description: Description || '',
       Price: parseFloat(Price),
-      expiry_date: expiry_date ? new Date(expiry_date) : null,
+      expiry_day: expiry_day ? new Date(expiry_day) : null,
       fesility: fesility || [],
       Status: true,
       CreateBy: userId
@@ -94,7 +94,7 @@ const createAdminPlan = async (req, res) => {
 // Update Admin Plan
 const updateAdminPlan = async (req, res) => {
   try {
-    const { id, PlanName, Description, Price, expiry_date, fesility, Status } = req.body;
+    const { id, PlanName, Description, Price, expiry_day, fesility, Status } = req.body;
     const userId = req.user.user_id;
 
     if (!id) {
@@ -118,8 +118,8 @@ const updateAdminPlan = async (req, res) => {
     if (PlanName !== undefined) adminPlan.PlanName = PlanName;
     if (Description !== undefined) adminPlan.Description = Description;
     if (Price !== undefined) adminPlan.Price = parseFloat(Price);
-    if (expiry_date !== undefined) {
-      adminPlan.expiry_date = expiry_date ? new Date(expiry_date) : null;
+    if (expiry_day !== undefined) {
+      adminPlan.expiry_day = expiry_day ? new Date(expiry_day) : null;
     }
 
     // Validate and update fesility if provided
