@@ -777,19 +777,35 @@ const getEmployeesByRestaurantId = async (req, res) => {
       reviewsByEmployee[review.for_Review_id].push(review);
     });
 
+    // Verify all required models are loaded
+    if (!Role || !Language || !Country || !State || !City || !User) {
+      const missingModels = [];
+      if (!Role) missingModels.push('Role');
+      if (!Language) missingModels.push('Language');
+      if (!Country) missingModels.push('Country');
+      if (!State) missingModels.push('State');
+      if (!City) missingModels.push('City');
+      if (!User) missingModels.push('User');
+      
+      console.error('Missing models:', missingModels);
+      return res.status(500).json({
+        success: false,
+        message: 'Error: Required database models are not loaded',
+        error: `Missing models: ${missingModels.join(', ')}`
+      });
+    }
+
     const employeesResponse = await Promise.all(employees.map(async (employee) => {
-      const [responsibility, role, language, country, state, city, createByUser] = await Promise.all([
-        Responsibility.findOne({ Responsibility_id: employee.Responsibility_id }),
-        Role.findOne({ Role_id: employee.Role_id }),
-        Language.findOne({ Language_id: employee.Language_id }),
-        Country.findOne({ Country_id: employee.Country_id }),
-        State.findOne({ State_id: employee.State_id }),
-        City.findOne({ City_id: employee.City_id }),
-        employee.CreateBy ? User.findOne({ user_id: employee.CreateBy }) : null
+      const [role, language, country, state, city, createByUser] = await Promise.all([
+        employee.Role_id && Role ? Role.findOne({ Role_id: employee.Role_id }).catch(() => null) : Promise.resolve(null),
+        employee.Language_id && Language ? Language.findOne({ Language_id: employee.Language_id }).catch(() => null) : Promise.resolve(null),
+        employee.Country_id && Country ? Country.findOne({ Country_id: employee.Country_id }).catch(() => null) : Promise.resolve(null),
+        employee.State_id && State ? State.findOne({ State_id: employee.State_id }).catch(() => null) : Promise.resolve(null),
+        employee.City_id && City ? City.findOne({ City_id: employee.City_id }).catch(() => null) : Promise.resolve(null),
+        employee.CreateBy && User ? User.findOne({ user_id: employee.CreateBy }).catch(() => null) : Promise.resolve(null)
       ]);
 
       const employeeObj = employee.toObject();
-      employeeObj.Responsibility_id = responsibility ? { Responsibility_id: responsibility.Responsibility_id, Responsibility_name: responsibility.Responsibility_name } : null;
       employeeObj.Role_id = role ? { Role_id: role.Role_id, role_name: role.role_name } : null;
       employeeObj.Language_id = language ? { Language_id: language.Language_id, Language_name: language.Language_name } : null;
       employeeObj.Country_id = country ? { Country_id: country.Country_id, Country_name: country.Country_name, code: country.code } : null;
@@ -898,10 +914,33 @@ const getEmployeesByRestaurantId = async (req, res) => {
       categorized_by_role: categorizedEmployees
     });
   } catch (error) {
+    console.error('Error in getEmployeesByRestaurantId:', error);
+    console.error('Error stack:', error.stack);
+    //console.error('Model check - Responsibility:', typeof Responsibility, !!Responsibility);
+    console.error('Model check - Role:', typeof Role, !!Role);
+    console.error('Model check - Language:', typeof Language, !!Language);
+    console.error('Model check - Country:', typeof Country, !!Country);
+    console.error('Model check - State:', typeof State, !!State);
+    console.error('Model check - City:', typeof City, !!City);
+    console.error('Model check - User:', typeof User, !!User);
+    console.error('Model check - Clock:', typeof Clock, !!Clock);
+    console.error('Model check - Review:', typeof Review, !!Review);
+    
     res.status(500).json({
       success: false,
       message: 'Error fetching employees for restaurant',
-      error: error.message
+      error: error.message,
+      details: process.env.NODE_ENV === 'development' ? {
+        stack: error.stack,
+        models: {
+          Role: !!Role,
+          Language: !!Language,
+          Country: !!Country,
+          State: !!State,
+          City: !!City,
+          User: !!User
+        }
+      } : undefined
     });
   }
 };
@@ -1191,6 +1230,235 @@ const getEmployeesByClientId = async (req, res) => {
   }
 };
 
+// Get Restaurant Employees by Role with shiftTime and OverAllPerformance
+const getRestaurantEmployeeByRole = async (req, res) => {
+  try {
+    const { restaurantId, roleId } = req.params;
+    const parsedRestaurantId = parseInt(restaurantId);
+    const parsedRoleId = parseInt(roleId);
+
+    if (!restaurantId || isNaN(parsedRestaurantId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid restaurant ID is required'
+      });
+    }
+
+    if (!roleId || isNaN(parsedRoleId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid role ID is required'
+      });
+    }
+
+    const restaurantUser = await User.findOne({ user_id: parsedRestaurantId });
+    if (!restaurantUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'Restaurant user not found'
+      });
+    }
+
+    const restaurantRole = await Role.findOne({ Role_id: restaurantUser.Role_id });
+    if (!restaurantRole || restaurantRole.role_name?.toLowerCase() !== 'restaurant') {
+      return res.status(400).json({
+        success: false,
+        message: 'Provided user is not associated with a restaurant role'
+      });
+    }
+
+    // Verify role exists
+    const role = await Role.findOne({ Role_id: parsedRoleId });
+    if (!role) {
+      return res.status(404).json({
+        success: false,
+        message: 'Role not found'
+      });
+    }
+
+    // Filter employees by restaurant, role, and status
+    const employees = await User.find({
+      CreateBy: parsedRestaurantId,
+      Role_id: parsedRoleId,
+      Status: true
+    }).sort({ CreateAt: -1 });
+
+    if (!employees || employees.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `No employees found for this restaurant with role "${role.role_name}"`
+      });
+    }
+
+    // Fetch clock records and reviews for all employees
+    const employeeIds = employees.map(emp => emp.user_id);
+    const [allClocks, allReviews] = await Promise.all([
+      Clock.find({ user_id: { $in: employeeIds }, Status: true }).sort({ CreateAt: -1 }),
+      Review.find({ for_Review_id: { $in: employeeIds }, Status: true }).sort({ CreateAt: -1 })
+    ]);
+
+    // Create maps for quick lookup
+    const clocksByEmployee = {};
+    const reviewsByEmployee = {};
+    
+    allClocks.forEach(clock => {
+      if (!clocksByEmployee[clock.user_id]) {
+        clocksByEmployee[clock.user_id] = [];
+      }
+      clocksByEmployee[clock.user_id].push(clock);
+    });
+
+    allReviews.forEach(review => {
+      if (!reviewsByEmployee[review.for_Review_id]) {
+        reviewsByEmployee[review.for_Review_id] = [];
+      }
+      reviewsByEmployee[review.for_Review_id].push(review);
+    });
+
+    // Populate employee data with related information, shiftTime, and OverAllPerformance
+    const employeesResponse = await Promise.all(employees.map(async (employee) => {
+      const [responsibility, employeeRole, language, currency, country, state, city, createByUser] = await Promise.all([
+        Responsibility.findOne({ Responsibility_id: employee.Responsibility_id }),
+        Role.findOne({ Role_id: employee.Role_id }),
+        Language.findOne({ Language_id: employee.Language_id }),
+        employee.currency_id ? Currency.findOne({ currency_id: employee.currency_id }) : null,
+        Country.findOne({ Country_id: employee.Country_id }),
+        State.findOne({ State_id: employee.State_id }),
+        City.findOne({ City_id: employee.City_id }),
+        employee.CreateBy ? User.findOne({ user_id: employee.CreateBy }) : null
+      ]);
+
+      const employeeObj = employee.toObject();
+      employeeObj.Responsibility_id = responsibility ? { 
+        Responsibility_id: responsibility.Responsibility_id, 
+        Responsibility_name: responsibility.Responsibility_name 
+      } : null;
+      employeeObj.Role_id = employeeRole ? { 
+        Role_id: employeeRole.Role_id, 
+        role_name: employeeRole.role_name 
+      } : null;
+      employeeObj.Language_id = language ? { 
+        Language_id: language.Language_id, 
+        Language_name: language.Language_name 
+      } : null;
+      employeeObj.currency_id = currency ? { 
+        currency_id: currency.currency_id, 
+        name: currency.name, 
+        icon: currency.icon 
+      } : null;
+      employeeObj.Country_id = country ? { 
+        Country_id: country.Country_id, 
+        Country_name: country.Country_name, 
+        code: country.code 
+      } : null;
+      employeeObj.State_id = state ? { 
+        State_id: state.State_id, 
+        state_name: state.state_name, 
+        Code: state.Code 
+      } : null;
+      employeeObj.City_id = city ? { 
+        City_id: city.City_id, 
+        City_name: city.City_name, 
+        Code: city.Code 
+      } : null;
+      employeeObj.CreateBy = createByUser ? { 
+        user_id: createByUser.user_id, 
+        Name: createByUser.Name, 
+        email: createByUser.email 
+      } : null;
+
+      // Calculate shiftTime (shiftTimings)
+      const clockRecords = clocksByEmployee[employee.user_id] || [];
+      let shiftTime = {
+        average_in_time: null,
+        average_out_time: null,
+        average_working_hours: null,
+        total_working_days: 0
+      };
+
+      if (clockRecords.length > 0) {
+        const validRecords = clockRecords.filter(record => record.in_time && record.out_time);
+        
+        if (validRecords.length > 0) {
+          let totalInMinutes = 0;
+          let totalOutMinutes = 0;
+          let totalWorkingHours = 0;
+
+          validRecords.forEach(record => {
+            const inTime = new Date(record.in_time);
+            const outTime = new Date(record.out_time);
+            
+            const inHours = inTime.getHours();
+            const inMinutes = inTime.getMinutes();
+            totalInMinutes += (inHours * 60) + inMinutes;
+
+            const outHours = outTime.getHours();
+            const outMinutes = outTime.getMinutes();
+            totalOutMinutes += (outHours * 60) + outMinutes;
+
+            const workingMs = outTime - inTime;
+            const workingHours = workingMs / (1000 * 60 * 60);
+            totalWorkingHours += workingHours;
+          });
+
+          const avgInMinutes = Math.floor(totalInMinutes / validRecords.length);
+          const avgOutMinutes = Math.floor(totalOutMinutes / validRecords.length);
+          
+          const avgInHours = Math.floor(avgInMinutes / 60);
+          const avgInMins = avgInMinutes % 60;
+          const avgOutHours = Math.floor(avgOutMinutes / 60);
+          const avgOutMins = avgOutMinutes % 60;
+
+          shiftTime.average_in_time = `${String(avgInHours).padStart(2, '0')}:${String(avgInMins).padStart(2, '0')}`;
+          shiftTime.average_out_time = `${String(avgOutHours).padStart(2, '0')}:${String(avgOutMins).padStart(2, '0')}`;
+          shiftTime.average_working_hours = parseFloat((totalWorkingHours / validRecords.length).toFixed(2));
+          shiftTime.total_working_days = validRecords.length;
+        }
+      }
+
+      // Calculate OverAllPerformance (%)
+      const performanceRatings = reviewsByEmployee[employee.user_id] || [];
+      let OverAllPerformance = null;
+      
+      if (performanceRatings.length > 0) {
+        const totalRating = performanceRatings.reduce((sum, review) => sum + (review.ReviewStarCount || 0), 0);
+        const averageRating = totalRating / performanceRatings.length;
+        // Assuming max rating is 5, convert to percentage
+        OverAllPerformance = parseFloat(((averageRating / 5) * 100).toFixed(2));
+      }
+
+      // Add shiftTime and OverAllPerformance fields
+      employeeObj.shiftTime = shiftTime;
+      employeeObj.OverAllPerformance = OverAllPerformance;
+
+      delete employeeObj.password;
+      return employeeObj;
+    }));
+
+    res.status(200).json({
+      success: true,
+      message: 'Employees retrieved successfully',
+      restaurant: {
+        user_id: restaurantUser.user_id,
+        Name: restaurantUser.Name,
+        email: restaurantUser.email
+      },
+      role: {
+        Role_id: role.Role_id,
+        role_name: role.role_name
+      },
+      total_employees: employeesResponse.length,
+      employees: employeesResponse
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching employees by role',
+      error: error.message
+    });
+  }
+};
+
 // Get Employee Details by ID with Responsibility and Work Details
 const getEmployeeDetailsById = async (req, res) => {
   try {
@@ -1375,6 +1643,148 @@ const getEmployeeDetailsById = async (req, res) => {
   }
 };
 
+// Get Employee by ID - Clean response with essential fields
+const getEmployeeById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const parsedId = parseInt(id);
+
+    if (!id || isNaN(parsedId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid employee ID is required'
+      });
+    }
+
+    // Find employee
+    const employee = await User.findOne({ user_id: parsedId, Status: true });
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'Employee not found'
+      });
+    }
+
+    // Fetch related data
+    const [responsibility, role, language, country, state, city] = await Promise.all([
+      Responsibility.findOne({ Responsibility_id: employee.Responsibility_id }),
+      Role.findOne({ Role_id: employee.Role_id }),
+      Language.findOne({ Language_id: employee.Language_id }),
+      Country.findOne({ Country_id: employee.Country_id }),
+      State.findOne({ State_id: employee.State_id }),
+      City.findOne({ City_id: employee.City_id })
+    ]);
+
+    // Fetch all clock records for this employee
+    const clockRecords = await Clock.find({ 
+      user_id: parsedId, 
+      Status: true 
+    }).sort({ date: -1 });
+
+    // Calculate Experience from OnboardingDate
+    const onboardingDate = new Date(employee.OnboardingDate);
+    const currentDate = new Date();
+    const experienceInMs = currentDate - onboardingDate;
+    const experienceInYears = Math.floor(experienceInMs / (1000 * 60 * 60 * 24 * 365));
+    const experienceInMonths = Math.floor((experienceInMs % (1000 * 60 * 60 * 24 * 365)) / (1000 * 60 * 60 * 24 * 30));
+    
+    const experience = {
+      years: experienceInYears,
+      months: experienceInMonths,
+      total_months: Math.floor(experienceInMs / (1000 * 60 * 60 * 24 * 30)),
+      display: `${experienceInYears} years ${experienceInMonths} months`
+    };
+
+    // Calculate Leave Information
+    // Standard leave policy: 20 days per year (can be customized)
+    const standardLeavePerYear = 20;
+    const totalLeaves = Math.floor(experienceInYears * standardLeavePerYear) + 
+                       Math.floor((experienceInMonths / 12) * standardLeavePerYear);
+    
+    // Calculate taken leave (days without clock records in current year)
+    const currentYearStart = new Date(currentDate.getFullYear(), 0, 1);
+    const currentYearEnd = new Date(currentDate.getFullYear(), 11, 31, 23, 59, 59);
+    
+    // Get all working days in current year (days with clock records)
+    const workingDaysThisYear = clockRecords.filter(record => {
+      const recordDate = new Date(record.date);
+      return recordDate >= currentYearStart && recordDate <= currentYearEnd && record.in_time;
+    }).length;
+
+    // Calculate total days in current year so far
+    const daysInYearSoFar = Math.ceil((currentDate - currentYearStart) / (1000 * 60 * 60 * 24));
+    
+    // Estimate taken leave (this is a simplified calculation)
+    // In a real system, you'd have a dedicated leave model
+    const estimatedWorkingDays = Math.floor(daysInYearSoFar * 0.7); // Assume 70% working days
+    const takenLeave = Math.max(0, estimatedWorkingDays - workingDaysThisYear);
+    
+    // Calculate leaves left
+    const leavesLeft = Math.max(0, totalLeaves - takenLeave);
+
+    // Prepare clean employee response
+    const employeeResponse = {
+      user_id: employee.user_id,
+      name: `${employee.Name} ${employee.last_name}`.trim(),
+      email: employee.email,
+      phone: employee.phone,
+      employee_id: employee.Employee_id,
+      role: role ? {
+        Role_id: role.Role_id,
+        role_name: role.role_name
+      } : null,
+      responsibility: responsibility ? {
+        Responsibility_id: responsibility.Responsibility_id,
+        Responsibility_name: responsibility.Responsibility_name
+      } : null,
+      onboarding_date: employee.OnboardingDate,
+      experience: experience,
+      total_leaves: totalLeaves,
+      leaves_left: leavesLeft,
+      taken_leaves: takenLeave,
+      gender: employee.gender,
+      user_image: employee.user_image,
+      language: language ? {
+        Language_id: language.Language_id,
+        Language_name: language.Language_name
+      } : null,
+      location: {
+        country: country ? {
+          Country_id: country.Country_id,
+          Country_name: country.Country_name,
+          code: country.code
+        } : null,
+        state: state ? {
+          State_id: state.State_id,
+          state_name: state.state_name,
+          Code: state.Code
+        } : null,
+        city: city ? {
+          City_id: city.City_id,
+          City_name: city.City_name,
+          Code: city.Code
+        } : null
+      },
+      isLoginPermission: employee.isLoginPermission,
+      Status: employee.Status,
+      CreateAt: employee.CreateAt
+    };
+
+    res.status(200).json({
+      success: true,
+      message: 'Employee retrieved successfully',
+      data: employeeResponse
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching employee',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   createUser,
   updateUser,
@@ -1386,6 +1796,8 @@ module.exports = {
   getEmployeesByRestaurantId,
   getEmployeesByClientId,
   getEmployeeDetailsById,
+  getRestaurantEmployeeByRole,
+  getEmployeeById,
   logout,
   createEmployee
 };

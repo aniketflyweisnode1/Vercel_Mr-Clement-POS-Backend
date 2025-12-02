@@ -10,7 +10,8 @@ const {
   restaurant_Top_Performer,
   reports,
   cityWiseUsageReport,
-  employeePerformance
+  employeePerformance,
+  restaurantDashboard
 } = require('../../controllers/Reports.Controller');
 
 // Restaurant Reports routes 16/09/2025
@@ -33,5 +34,8 @@ router.get('/city-wise-usage', auth, cityWiseUsageReport);
 
 // Employee Performance API
 router.get('/employee-performance/:employeeId', auth, employeePerformance);
+
+// Restaurant Dashboard API (id is optional, uses authenticated user if not provided)
+router.get('/restaurant-dashboard', auth, restaurantDashboard);
 
 module.exports = router;

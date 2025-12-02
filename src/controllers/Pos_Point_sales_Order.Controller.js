@@ -473,20 +473,70 @@ const getPosOrdersByAuth = async (req, res) => {
               item_Quentry,
               item_Addons_id,
               item_Variants_id,
-              Item: item ? { item_id: item.Items_id, item_name: item.item_name, prices: item.prices } : null,
-              Addon: addon ? { item_Addons_id: addon.item_Addons_id, Addons: addon.Addons, prices: addon.prices } : null,
-              Variant: variant ? { item_Variants_id: variant.item_Variants_id, Variants: variant.Variants, prices: variant.prices } : null
+              Item: item ? { 
+                Items_id: item.Items_id,
+                item_id: item.Items_id, 
+                item_name: item['item-name'], 
+                'item-name': item['item-name'],
+                'item-code': item['item-code'],
+                'item-price': item['item-price'],
+                prices: item.prices 
+              } : null,
+              Addon: addon ? { 
+                item_Addons_id: addon.item_Addons_id, 
+                Addons: addon.Addons, 
+                prices: addon.prices 
+              } : null,
+              Variant: variant ? { 
+                item_Variants_id: variant.item_Variants_id, 
+                Variants: variant.Variants, 
+                prices: variant.prices 
+              } : null
             };
           })
         );
 
         const posOrderResponse = posOrder.toObject();
-        posOrderResponse.CreateBy = createByUser ? { user_id: createByUser.user_id, Name: createByUser.Name, email: createByUser.email } : null;
-        posOrderResponse.UpdatedBy = updatedByUser ? { user_id: updatedByUser.user_id, Name: updatedByUser.Name, email: updatedByUser.email } : null;
+        
+        // Ensure all IDs are included in the response
+        posOrderResponse.POS_Order_id = posOrder.POS_Order_id;
+        posOrderResponse.Customer_id = posOrder.Customer_id;
+        posOrderResponse.Table_id = posOrder.Table_id;
+        posOrderResponse.Kitchen_id = posOrder.Kitchen_id;
+        posOrderResponse.Restaurant_id = posOrder.Restaurant_id;
+        posOrderResponse.CreateBy_id = posOrder.CreateBy;
+        posOrderResponse.UpdatedBy_id = posOrder.UpdatedBy;
+        
+        // Populated relationships with complete data
+        posOrderResponse.CreateBy = createByUser ? { 
+          user_id: createByUser.user_id, 
+          Name: createByUser.Name, 
+          email: createByUser.email,
+          Employee_id: createByUser.Employee_id
+        } : null;
+        posOrderResponse.UpdatedBy = updatedByUser ? { 
+          user_id: updatedByUser.user_id, 
+          Name: updatedByUser.Name, 
+          email: updatedByUser.email,
+          Employee_id: updatedByUser.Employee_id
+        } : null;
         posOrderResponse.items = populatedItems;
-        posOrderResponse.Customer = customer ? { Customer_id: customer.Customer_id, Name: customer.Name, phone: customer.phone } : null;
-        posOrderResponse.Table = table ? { table_id: table.table_id, table_name: table.table_name } : null;
-        posOrderResponse.Kitchen = kitchen ? { kitchen_id: kitchen.kitchen_id, kitchen_name: kitchen.kitchen_name } : null;
+        posOrderResponse.Customer = customer ? { 
+          Customer_id: customer.Customer_id, 
+          Name: customer.Name, 
+          phone: customer.phone,
+          Address: customer.Address
+        } : null;
+        posOrderResponse.Table = table ? { 
+          table_id: table.table_id, 
+          table_name: table.table_name,
+          'Table-name': table['Table-name'],
+          'Table-code': table['Table-code']
+        } : null;
+        posOrderResponse.Kitchen = kitchen ? { 
+          kitchen_id: kitchen.kitchen_id, 
+          kitchen_name: kitchen.kitchen_name
+        } : null;
 
         return posOrderResponse;
       })

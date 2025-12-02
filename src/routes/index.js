@@ -33,6 +33,7 @@ const employeeFeedbackRoutes = require('./restaurant/employee_feedback.route.js'
 const quickOrderRoutes = require('./employee/quick_order.route.js');
 const tableBookingRoutes = require('./employee/table_booking.route.js');
 const orderHistoryRoutes = require('./employee/order_history.route.js');
+const employeeRoutes = require('./employee/employee.route.js');
 const notificationsRoutes = require('./master/notifications.route.js');
 const notificationsMapEmployeeRoutes = require('./master/notifications_map_employee.route.js');
 const clockRoutes = require('./master/clock.route.js');
@@ -110,6 +111,7 @@ router.use('/admin/newsletter', newsletterRoutes);
 router.use('/admin/posspealist', posSpealistRoutes);
 router.use('/admin/reports', reportsRoutes);
 router.use('/employee/quick_order', quickOrderRoutes);
+router.use('/employee', employeeRoutes);
 router.use('/master/notifications', notificationsRoutes);
 router.use('/master/notifications_map_employee', notificationsMapEmployeeRoutes);
 router.use('/master/clock', clockRoutes);

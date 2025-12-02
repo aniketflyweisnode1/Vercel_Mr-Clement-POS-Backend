@@ -11,6 +11,8 @@ const Admin_Plan_buy_Restaurant = require('../models/Admin_Plan_buy_Restaurant.m
 const Admin_Plan = require('../models/Admin_Plan.model');
 const City = require('../models/City.model');
 const Clock = require('../models/Clock.model');
+const Reservations = require('../models/Reservations.model');
+const Table = require('../models/Table.model');
 
 // Helper function to get date range based on period
 const getDateRange = (period) => {
@@ -1393,6 +1395,325 @@ const employeePerformance = async (req, res) => {
   }
 };
 
+// Restaurant Dashboard API
+const restaurantDashboard = async (req, res) => {
+  try {
+    // Get restaurant ID from authenticated user or params
+    const restaurantId = req.user?.user_id;
+    
+    if (!restaurantId || isNaN(restaurantId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid restaurant ID is required'
+      });
+    }
+
+    // Verify restaurant user exists and has restaurant role
+    const restaurantUser = await User.findOne({ user_id: restaurantId });
+    
+    if (!restaurantUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'Restaurant not found'
+      });
+    }
+
+    const restaurantRole = await Role.findOne({ Role_id: restaurantUser.Role_id });
+    if (!restaurantRole || restaurantRole.role_name?.toLowerCase() !== 'restaurant') {
+      return res.status(400).json({
+        success: false,
+        message: 'Provided user is not associated with a restaurant role'
+      });
+    }
+
+    // Get all employees created by this restaurant
+    const employees = await User.find({ 
+      CreateBy: restaurantId, 
+      Status: true 
+    });
+    const employeeIds = employees.map(emp => emp.user_id);
+
+    // Get all orders for this restaurant
+    const posOrderQuery = { 
+      Restaurant_id: restaurantId,
+      Status: true 
+    };
+    
+    const quickOrderQuery = { 
+      Status: true 
+    };
+    
+    if (employeeIds.length > 0) {
+      quickOrderQuery['get_order_Employee_id'] = { $in: employeeIds };
+    } else {
+      quickOrderQuery['get_order_Employee_id'] = { $in: [-1] };
+    }
+
+    const [posOrders, quickOrders, allCustomers] = await Promise.all([
+      Pos_Point_sales_Order.find(posOrderQuery).sort({ CreateAt: -1 }),
+      Quick_Order.find(quickOrderQuery).sort({ CreateAt: -1 }),
+      employeeIds.length > 0 ? Customer.find({ CreateBy: { $in: employeeIds }, Status: true }) : []
+    ]);
+
+    // 1. TotalOrder
+    const TotalOrder = posOrders.length + quickOrders.length;
+
+    // 2. TotalSale
+    const TotalSale = [...posOrders, ...quickOrders].reduce(
+      (sum, order) => sum + (order.Total || 0),
+      0
+    );
+
+    // Helper function to get day name from date (returns Mon-Sun)
+    const getDayName = (date) => {
+      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      return days[date.getDay()];
+    };
+    
+    // Helper function to reorder days array to start with Monday
+    const reorderDays = (data) => {
+      const dayOrder = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      return dayOrder.map(day => data[day] || 0);
+    };
+
+    // Helper function to initialize week data
+    const initializeWeekData = () => {
+      return {
+        'Mon': 0,
+        'Tue': 0,
+        'Wed': 0,
+        'Thu': 0,
+        'Fri': 0,
+        'Sat': 0,
+        'Sun': 0
+      };
+    };
+
+    // Get last 7 days for chart data
+    const last7Days = [];
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      last7Days.push(new Date(date.setHours(0, 0, 0, 0)));
+    }
+
+    // 3. RepeatCustomersChart - customers with more than 1 order
+    const repeatCustomersData = initializeWeekData();
+    const customerOrderCounts = {};
+    
+    // Count orders per customer
+    posOrders.forEach(order => {
+      if (order.Customer_id) {
+        customerOrderCounts[order.Customer_id] = (customerOrderCounts[order.Customer_id] || 0) + 1;
+      }
+    });
+
+    quickOrders.forEach(order => {
+      if (order.client_mobile_no) {
+        const customer = allCustomers.find(c => c.phone === order.client_mobile_no);
+        if (customer) {
+          customerOrderCounts[customer.Customer_id] = (customerOrderCounts[customer.Customer_id] || 0) + 1;
+        }
+      }
+    });
+
+    // Get repeat customers (more than 1 order)
+    const repeatCustomerIds = Object.keys(customerOrderCounts).filter(
+      customerId => customerOrderCounts[customerId] > 1
+    ).map(id => parseInt(id));
+
+    // Count repeat customers by day of week in last 7 days
+    const repeatCustomersByDay = {};
+    last7Days.forEach(day => {
+      const dayName = getDayName(day);
+      const nextDay = new Date(day);
+      nextDay.setDate(nextDay.getDate() + 1);
+      
+      const dayPosOrders = posOrders.filter(order => {
+        const orderDate = new Date(order.CreateAt);
+        return orderDate >= day && orderDate < nextDay && repeatCustomerIds.includes(order.Customer_id);
+      });
+      
+      const dayQuickOrders = quickOrders.filter(order => {
+        const orderDate = new Date(order.CreateAt);
+        if (orderDate >= day && orderDate < nextDay) {
+          const customer = allCustomers.find(c => c.phone === order.client_mobile_no);
+          return customer && repeatCustomerIds.includes(customer.Customer_id);
+        }
+        return false;
+      });
+      
+      repeatCustomersByDay[dayName] = (dayPosOrders.length + dayQuickOrders.length);
+    });
+
+    // Calculate percentages for RepeatCustomersChart
+    const repeatCustomersOrdered = reorderDays(repeatCustomersByDay);
+    const maxRepeatCustomers = Math.max(...repeatCustomersOrdered, 1);
+    const RepeatCustomersChart = {
+      percentage: repeatCustomersOrdered.map(count => 
+        Math.round((count / maxRepeatCustomers) * 100)
+      ),
+      Days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    };
+
+    // 4. NewCustomersChart - first-time customers
+    const newCustomersData = initializeWeekData();
+    
+    // Get customers created in last 7 days
+    last7Days.forEach(day => {
+      const dayName = getDayName(day);
+      const nextDay = new Date(day);
+      nextDay.setDate(nextDay.getDate() + 1);
+      
+      const newCustomersCount = allCustomers.filter(customer => {
+        const customerDate = new Date(customer.CreateAt);
+        return customerDate >= day && customerDate < nextDay;
+      }).length;
+      
+      newCustomersData[dayName] = newCustomersCount;
+    });
+
+    // Calculate percentages for NewCustomersChart
+    const newCustomersOrdered = reorderDays(newCustomersData);
+    const maxNewCustomers = Math.max(...newCustomersOrdered, 1);
+    const NewCustomersChart = {
+      percentage: newCustomersOrdered.map(count => 
+        Math.round((count / maxNewCustomers) * 100)
+      ),
+      Days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    };
+
+    // 5. ReservationsOrderList - Get recent reservations
+    const reservationQuery = {
+      Status: true
+    };
+    
+    if (employeeIds.length > 0) {
+      reservationQuery.CreateBy = { $in: employeeIds };
+    } else {
+      reservationQuery.CreateBy = { $in: [-1] };
+    }
+    
+    const reservations = await Reservations.find(reservationQuery)
+      .sort({ CreateAt: -1 })
+      .limit(10);
+
+    // Manually populate Customer and Table data
+    const ReservationsOrderList = await Promise.all(reservations.map(async (reservation) => {
+      const [customer, table] = await Promise.all([
+        reservation.Customer_id ? Customer.findOne({ Customer_id: reservation.Customer_id }) : null,
+        reservation.Table_id ? Table.findOne({ table_id: reservation.Table_id }) : null
+      ]);
+
+      return {
+        Reservations_id: reservation.Reservations_id,
+        Customer: customer ? {
+          Customer_id: customer.Customer_id,
+          Name: customer.Name,
+          phone: customer.phone
+        } : null,
+        Table: table ? {
+          Table_id: table.table_id,
+          table_name: table.table_name
+        } : null,
+        slots: reservation.slots,
+        slots_time: reservation.slots_time,
+        Date_time: reservation.Date_time,
+        people_count: reservation.people_count,
+        PaymentStatus: reservation.PaymentStatus,
+        Status: reservation.Status,
+        CreateAt: reservation.CreateAt
+      };
+    }));
+
+    // 6. TopSellersItemList - Top selling items
+    const itemCounts = {};
+    
+    // Process POS orders
+    posOrders.forEach(order => {
+      if (order.items && Array.isArray(order.items)) {
+        order.items.forEach(item => {
+          if (item.item_id) {
+            itemCounts[item.item_id] = (itemCounts[item.item_id] || 0) + (item.item_Quentry || 0);
+          }
+        });
+      }
+    });
+
+    // Process Quick orders
+    quickOrders.forEach(order => {
+      if (order.item_ids && Array.isArray(order.item_ids)) {
+        order.item_ids.forEach(item => {
+          if (item.item_id) {
+            itemCounts[item.item_id] = (itemCounts[item.item_id] || 0) + (item.quantity || 0);
+          }
+        });
+      }
+    });
+
+    // Get top 10 items
+    const topItemIds = Object.entries(itemCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([itemId]) => parseInt(itemId));
+
+    const topItems = await Items.find({ Items_id: { $in: topItemIds }, Status: true });
+    
+    const TopSellersItemList = topItemIds.map(itemId => {
+      const item = topItems.find(i => i.Items_id === itemId);
+      return {
+        Items_id: itemId,
+        item_name: item ? item['item-name'] : 'Unknown',
+        item_code: item ? item['item-code'] : null,
+        total_quantity_sold: itemCounts[itemId],
+        item_price: item ? item['item-price'] : 0,
+        item_stock_quantity: item ? item['item-stock-quantity'] : 0
+      };
+    });
+
+    // 7. StockAlertList - Items with low stock (less than 10 or threshold)
+    const stockThreshold = 10; // You can make this configurable
+    const lowStockItems = await Items.find({
+      'item-stock-quantity': { $lt: stockThreshold },
+      Status: true
+    })
+    .sort({ 'item-stock-quantity': 1 })
+    .limit(20);
+
+    const StockAlertList = lowStockItems.map(item => ({
+      Items_id: item.Items_id,
+      item_name: item['item-name'],
+      item_code: item['item-code'],
+      item_stock_quantity: item['item-stock-quantity'],
+      item_price: item['item-price'],
+      alert_level: item['item-stock-quantity'] < 5 ? 'Critical' : 'Low'
+    }));
+
+    // Prepare response
+    const dashboardData = {
+      TotalOrder,
+      RepeatCustomersChart,
+      NewCustomersChart,
+      TotalSale: parseFloat(TotalSale.toFixed(2)),
+      ReservationsOrderList,
+      TopSellersItemList,
+      StockAlertList
+    };
+
+    res.status(200).json({
+      success: true,
+      message: 'Restaurant dashboard data retrieved successfully',
+      data: dashboardData
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching restaurant dashboard data',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   reportsToday,
   reportsMonth,
@@ -1403,5 +1724,6 @@ module.exports = {
   restaurant_Top_Performer,
   reports,
   cityWiseUsageReport,
-  employeePerformance
+  employeePerformance,
+  restaurantDashboard
 };
