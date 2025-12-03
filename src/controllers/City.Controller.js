@@ -160,8 +160,15 @@ const getCitiesByState = async (req, res) => {
   try {
     const { stateId } = req.params;
     
+    if (!stateId || isNaN(parseInt(stateId))) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid state ID is required'
+      });
+    }
+    
     const cities = await City.find({ 
-      State_id: stateId, 
+      State_id: parseInt(stateId), 
       Status: true 
     })
     .sort({ City_name: 1 });
