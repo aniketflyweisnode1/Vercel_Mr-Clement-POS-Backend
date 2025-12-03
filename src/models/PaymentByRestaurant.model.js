@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 const AutoIncrement = require('mongoose-sequence')(mongoose);
 
 const paymentByRestaurantSchema = new mongoose.Schema({
-  Payment_id: {
+  PaymentByRestaurant_id: {
     type: Number,
     unique: true,
     auto: true
@@ -54,8 +54,8 @@ const paymentByRestaurantSchema = new mongoose.Schema({
   versionKey: false
 });
 
-// Auto-increment for Payment_id
-paymentByRestaurantSchema.plugin(AutoIncrement, { inc_field: 'Payment_id' });
+// Auto-increment for PaymentByRestaurant_id
+paymentByRestaurantSchema.plugin(AutoIncrement, { inc_field: 'PaymentByRestaurant_id' });
 
 module.exports = mongoose.model('PaymentByRestaurant', paymentByRestaurantSchema);
 

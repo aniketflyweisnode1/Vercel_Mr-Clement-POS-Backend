@@ -130,7 +130,7 @@ const updatePaymentByRestaurant = async (req, res) => {
       });
     }
 
-    const payment = await PaymentByRestaurant.findOne({ Payment_id: parseInt(id) });
+    const payment = await PaymentByRestaurant.findOne({ PaymentByRestaurant_id: parseInt(id) });
     if (!payment) {
       return res.status(404).json({
         success: false,
@@ -223,7 +223,7 @@ const getPaymentByRestaurantById = async (req, res) => {
       });
     }
 
-    const payment = await PaymentByRestaurant.findOne({ Payment_id: parseInt(id) });
+    const payment = await PaymentByRestaurant.findOne({ PaymentByRestaurant_id: parseInt(id) });
     if (!payment) {
       return res.status(404).json({
         success: false,
@@ -367,7 +367,7 @@ const deletePaymentByRestaurant = async (req, res) => {
       });
     }
 
-    const payment = await PaymentByRestaurant.findOne({ Payment_id: parseInt(id) });
+    const payment = await PaymentByRestaurant.findOne({ PaymentByRestaurant_id: parseInt(id) });
     if (!payment) {
       return res.status(404).json({
         success: false,
