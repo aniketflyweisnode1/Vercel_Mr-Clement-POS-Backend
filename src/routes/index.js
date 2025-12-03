@@ -79,6 +79,8 @@ const restaurantSlotRoutes = require('./restaurant/restaurant_slot.route.js');
 const adminPlanBuyRestaurantRoutes = require('./restaurant/admin_plan_buy_restaurant.route.js');
 const adminMessageRoutes = require('./restaurant/admin_message.route.js');
 const adminMessageWithClientRoutes = require('./restaurant/admin_message_with_client.route.js');
+const paymentOptionsRoutes = require('./restaurant/payment-options.route.js');
+const paymentByRestaurantRoutes = require('./restaurant/payment-by-restaurant.route.js');
 const jsonFileRoutes = require('./user/jsonFile.route.js');
 const fileuploadRoutes = require('./fileupload.js');
 
@@ -160,6 +162,8 @@ router.use('/restaurant/admin_plan_buy_restaurant', adminPlanBuyRestaurantRoutes
 router.use('/restaurant/admin_message', adminMessageRoutes);
 router.use('/restaurant/admin_message_with_client', adminMessageWithClientRoutes);
 router.use('/restaurant/employee_feedback', employeeFeedbackRoutes);
+router.use('/restaurant/payment_options', paymentOptionsRoutes);
+router.use('/restaurant/payment_by_restaurant', paymentByRestaurantRoutes);
 router.use('/user/jsonFile', jsonFileRoutes);
 router.use('/fileupload', fileuploadRoutes);
 

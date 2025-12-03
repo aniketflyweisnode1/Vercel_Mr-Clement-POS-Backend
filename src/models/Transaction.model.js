@@ -28,7 +28,7 @@ const transactionSchema = new mongoose.Schema({
   },
   transactionType: {
     type: String,
-    enum: ['Pending', 'Refund', 'Plan_Buy', 'Device_buy'],
+    enum: ['Pending', 'Refund', 'Plan_Buy', 'Device_buy', 'Order_Payment'],
     required: true
   },
   transaction_date: {

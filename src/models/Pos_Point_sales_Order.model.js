@@ -43,6 +43,16 @@ const posPointSalesOrderSchema = new mongoose.Schema({
     enum: ['Preparing', 'Served', 'Cancelled'],
     default: 'Preparing'
   },
+  payment_status: {
+    type: String,
+    enum: ['Pending', 'Failed', 'Cancelled', 'Success'],
+    default: 'Pending'
+  },
+  transaction_id: {
+    type: Number,
+    ref: 'Transaction',
+    default: null
+  },
   Customer_id: {
     type: Number,
     ref: 'Customer'

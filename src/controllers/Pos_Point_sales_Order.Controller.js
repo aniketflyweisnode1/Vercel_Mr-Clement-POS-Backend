@@ -71,7 +71,9 @@ const createPosOrder = async (req, res) => {
       Kitchen_id, 
       Restaurant_id,
       Status,
-      Order_Status
+      Order_Status,
+      payment_status,
+      transaction_id
     } = req.body;
     
     const userId = req.user.user_id;
@@ -146,6 +148,17 @@ const createPosOrder = async (req, res) => {
     // Calculate total: subtotal + tax
     const Total = totalSubTotal + Tax;
 
+    // Validate payment_status if provided
+    if (payment_status !== undefined) {
+      const validPaymentStatuses = ['Pending', 'Failed', 'Cancelled', 'Success'];
+      if (!validPaymentStatuses.includes(payment_status)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid payment_status. Must be one of: ${validPaymentStatuses.join(', ')}`
+        });
+      }
+    }
+
     const posOrder = new Pos_Point_sales_Order({
       items: normalizedItems,
       Tax,
@@ -157,6 +170,8 @@ const createPosOrder = async (req, res) => {
       Kitchen_id,
       Restaurant_id: restaurantIdForOrder,
       Order_Status: Order_Status || 'Preparing',
+      payment_status: payment_status || 'Pending',
+      transaction_id: transaction_id || null,
       Status,
       CreateBy: userId
     });
@@ -186,7 +201,9 @@ const updatePosOrder = async (req, res) => {
       Kitchen_id, 
       Restaurant_id,
       Status,
-      Order_Status 
+      Order_Status,
+      payment_status,
+      transaction_id
     } = req.body;
     
     const userId = req.user.user_id;
@@ -209,6 +226,17 @@ const updatePosOrder = async (req, res) => {
     const requesterIsRestaurant = await isRestaurantRole(req.user.role);
     ensureRestaurantOwnership(posOrder, requesterIsRestaurant, req.user.user_id);
 
+    // Validate payment_status if provided
+    if (payment_status !== undefined) {
+      const validPaymentStatuses = ['Pending', 'Failed', 'Cancelled', 'Success'];
+      if (!validPaymentStatuses.includes(payment_status)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid payment_status. Must be one of: ${validPaymentStatuses.join(', ')}`
+        });
+      }
+    }
+
     // Update fields if provided
     if (items !== undefined) {
       const normalizedItems = items.map((item) => ({
@@ -225,6 +253,8 @@ const updatePosOrder = async (req, res) => {
     if (Kitchen_id !== undefined) posOrder.Kitchen_id = Kitchen_id;
     if (Status !== undefined) posOrder.Status = Status;
     if (Order_Status !== undefined) posOrder.Order_Status = Order_Status;
+    if (payment_status !== undefined) posOrder.payment_status = payment_status;
+    if (transaction_id !== undefined) posOrder.transaction_id = transaction_id;
     if (Restaurant_id !== undefined || requesterIsRestaurant) {
       const resolvedRestaurantId = await resolveRestaurantIdForRequest({
         requesterIsRestaurant,
@@ -460,7 +490,7 @@ const getPosOrdersByAuth = async (req, res) => {
         // Populate items array with detailed information
         const populatedItems = await Promise.all(
           posOrder.items.map(async (itemData) => {
-            const { item_id, item_Quentry, item_Addons_id, item_Variants_id } = itemData;
+            const { item_id, item_Quentry, item_Addons_id, item_Variants_id, item_status, item_size } = itemData;
             
             const [item, addon, variant] = await Promise.all([
               Items.findOne({ Items_id: parseInt(item_id) }),
@@ -473,6 +503,8 @@ const getPosOrdersByAuth = async (req, res) => {
               item_Quentry,
               item_Addons_id,
               item_Variants_id,
+              item_status: item_status || 'Preparing',
+              item_size: item_size || null,
               Item: item ? { 
                 Items_id: item.Items_id,
                 item_id: item.Items_id, 
