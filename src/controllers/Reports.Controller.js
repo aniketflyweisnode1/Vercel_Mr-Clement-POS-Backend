@@ -13,6 +13,8 @@ const City = require('../models/City.model');
 const Clock = require('../models/Clock.model');
 const Reservations = require('../models/Reservations.model');
 const Table = require('../models/Table.model');
+const Employee_Feedback = require('../models/Employee_Feedback.model');
+const Currency = require('../models/currency.model');
 
 // Helper function to get date range based on period
 const getDateRange = (period) => {
@@ -1301,89 +1303,282 @@ const employeePerformance = async (req, res) => {
       });
     }
 
-    // Get POS orders by employee (CreateBy)
-    const posOrders = await Pos_Point_sales_Order.find({
-      CreateBy: parsedEmployeeId,
+    // Get employee role
+    const role = await Role.findOne({ Role_id: employee.Role_id });
+
+    // Get today's clock record
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const todayClock = await Clock.findOne({
+      user_id: parsedEmployeeId,
+      date: { $gte: today, $lt: tomorrow },
       Status: true
     });
 
-    // Get Quick orders by employee
-    const quickOrders = await Quick_Order.find({
-      get_order_Employee_id: parsedEmployeeId,
-      Status: true
-    });
+    // Calculate WorkedToday (hours worked today)
+    let WorkedToday = 0;
+    let clockin = null;
+    if (todayClock && todayClock.in_time && todayClock.out_time) {
+      const inTime = new Date(todayClock.in_time);
+      const outTime = new Date(todayClock.out_time);
+      WorkedToday = parseFloat(((outTime - inTime) / (1000 * 60 * 60)).toFixed(2));
+      clockin = todayClock.in_time;
+    } else if (todayClock && todayClock.in_time) {
+      // Clocked in but not out yet
+      const inTime = new Date(todayClock.in_time);
+      const currentTime = new Date();
+      WorkedToday = parseFloat(((currentTime - inTime) / (1000 * 60 * 60)).toFixed(2));
+      clockin = todayClock.in_time;
+    }
 
-    // Calculate totalSalesContributed
-    const totalSalesContributed = [...posOrders, ...quickOrders].reduce(
-      (sum, order) => sum + (order.Total || 0),
-      0
-    );
+    // Calculate MinsBreak (break time in minutes) - assuming 1 hour break for 8+ hour shifts
+    let MinsBreak = 0;
+    if (WorkedToday >= 8) {
+      MinsBreak = 60; // 1 hour break
+    } else if (WorkedToday >= 4) {
+      MinsBreak = 30; // 30 minutes break
+    }
 
-    // Calculate TotalOrdersTaken
-    const TotalOrdersTaken = posOrders.length + quickOrders.length;
+    // Calculate LeavesLeft (using same logic as getEmployeeDetailsById)
+    const onboardingDate = new Date(employee.OnboardingDate);
+    const currentDate = new Date();
+    const experienceInMs = currentDate - onboardingDate;
+    const experienceInYears = Math.floor(experienceInMs / (1000 * 60 * 60 * 24 * 365));
+    const experienceInMonths = Math.floor((experienceInMs % (1000 * 60 * 60 * 24 * 365)) / (1000 * 60 * 60 * 24 * 30));
+    
+    const standardLeavePerYear = 20;
+    const totalLeaves = Math.floor(experienceInYears * standardLeavePerYear) + 
+                       Math.floor((experienceInMonths / 12) * standardLeavePerYear);
+    
+    const clockRecords = await Clock.find({ 
+      user_id: parsedEmployeeId, 
+      Status: true 
+    }).sort({ date: -1 });
 
-    // Calculate TotalTablesServed (unique tables from orders)
-    const tableSet = new Set();
-    posOrders.forEach(order => {
-      if (order.Table_id) tableSet.add(order.Table_id);
-    });
-    quickOrders.forEach(order => {
-      if (order.Table_id) tableSet.add(order.Table_id);
-    });
-    const TotalTablesServed = tableSet.size;
+    const currentYearStart = new Date(currentDate.getFullYear(), 0, 1);
+    const currentYearEnd = new Date(currentDate.getFullYear(), 11, 31, 23, 59, 59);
+    
+    const workingDaysThisYear = clockRecords.filter(record => {
+      const recordDate = new Date(record.date);
+      return recordDate >= currentYearStart && recordDate <= currentYearEnd && record.in_time;
+    }).length;
 
-    // Calculate AvgWorkingHrs from Clock records
-    const clockRecords = await Clock.find({
+    const daysInYearSoFar = Math.ceil((currentDate - currentYearStart) / (1000 * 60 * 60 * 24));
+    const estimatedWorkingDays = Math.floor(daysInYearSoFar * 0.7);
+    const takenLeave = Math.max(0, estimatedWorkingDays - workingDaysThisYear);
+    const LeavesLeft = Math.max(0, totalLeaves - takenLeave);
+
+    // Employee Details
+    const employeeDetails = {
+      Name: `${employee.Name} ${employee.last_name}`.trim(),
+      image: employee.user_image || null,
+      role: role ? role.role_name : null,
+      clockin: clockin,
+      WorkedToday: WorkedToday,
+      MinsBreak: MinsBreak,
+      LeavesLeft: LeavesLeft
+    };
+
+    // Calculate AvgWorkingHrs by day of week (last 30 days)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const recentClockRecords = await Clock.find({
       user_id: parsedEmployeeId,
       Status: true,
       in_time: { $exists: true },
-      out_time: { $exists: true }
+      out_time: { $exists: true },
+      date: { $gte: thirtyDaysAgo }
     }).sort({ date: -1 });
 
-    // Group by day and calculate average
-    const dailyHours = [];
-    const hoursByDay = {};
+    // Helper function to get day name
+    const getDayName = (date) => {
+      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      return days[date.getDay()];
+    };
 
-    clockRecords.forEach(record => {
-      const day = new Date(record.date).toISOString().split('T')[0];
-      if (!hoursByDay[day]) {
-        hoursByDay[day] = [];
-      }
+    // Group by day of week
+    const hoursByDayOfWeek = {
+      'Mon': { serving: [], helping: [] },
+      'Tue': { serving: [], helping: [] },
+      'Wed': { serving: [], helping: [] },
+      'Thu': { serving: [], helping: [] },
+      'Fri': { serving: [], helping: [] },
+      'Sat': { serving: [], helping: [] },
+      'Sun': { serving: [], helping: [] }
+    };
+
+    recentClockRecords.forEach(record => {
+      const dayName = getDayName(new Date(record.date));
       const inTime = new Date(record.in_time);
       const outTime = new Date(record.out_time);
       const hours = (outTime - inTime) / (1000 * 60 * 60);
-      hoursByDay[day].push(hours);
+      
+      // For now, we'll use the same hours for both serving and helping
+      // You can customize this logic based on your business rules
+      hoursByDayOfWeek[dayName].serving.push(hours);
+      hoursByDayOfWeek[dayName].helping.push(hours * 0.35); // Assuming 35% helping time
     });
 
-    Object.entries(hoursByDay).forEach(([day, hoursArray]) => {
-      const totalHours = hoursArray.reduce((sum, h) => sum + h, 0);
-      const avgHours = totalHours / hoursArray.length;
-      dailyHours.push({
-        day,
-        hours: parseFloat(avgHours.toFixed(2))
-      });
+    // Calculate averages - order: Sat, Sun, Mon, Tue, Wed, Thu, Fri
+    const AvgWorkingHrs = ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'].map(day => {
+      const servingHours = hoursByDayOfWeek[day].serving;
+      const helpingHours = hoursByDayOfWeek[day].helping;
+      
+      // Calculate average serving hours (actual working hours)
+      const servingAvg = servingHours.length > 0
+        ? parseFloat((servingHours.reduce((a, b) => a + b, 0) / servingHours.length).toFixed(1))
+        : 10; // Default to 10 if no data
+      
+      // Calculate average helping hours (35% of serving time or separate calculation)
+      const helpingAvg = helpingHours.length > 0
+        ? parseFloat((helpingHours.reduce((a, b) => a + b, 0) / helpingHours.length).toFixed(1))
+        : parseFloat((servingAvg * 0.35).toFixed(1)); // Default to 35% of serving if no data
+      
+      return {
+        day: day,
+        serving: servingAvg,
+        helping: helpingAvg
+      };
     });
 
-    // Calculate total tips earned (assuming tips are in orders or separate model)
-    // For now, we'll check if there's a tip field in orders
-    let totalTipsEarned = 0;
+    // Calculate totalTipsEarned (last 30 days)
+    const posOrders = await Pos_Point_sales_Order.find({
+      CreateBy: parsedEmployeeId,
+      Status: true,
+      CreateAt: { $gte: thirtyDaysAgo }
+    });
+
+    const quickOrders = await Quick_Order.find({
+      get_order_Employee_id: parsedEmployeeId,
+      Status: true,
+      CreateAt: { $gte: thirtyDaysAgo }
+    });
+
+    // Calculate tips from orders (assuming tip field exists or calculate from amount)
+    let totalTips = 0;
+    const tipAmounts = [];
     [...posOrders, ...quickOrders].forEach(order => {
-      if (order.tip || order.Tip) {
-        totalTipsEarned += parseFloat(order.tip || order.Tip || 0);
+      // If tip field exists, use it; otherwise estimate 10% of total as tip
+      const tip = order.tip || order.Tip || (order.Total * 0.1);
+      if (tip > 0) {
+        totalTips += parseFloat(tip);
+        tipAmounts.push(parseFloat(tip));
       }
     });
+
+    // Get employee currency
+    const employeeCurrency = employee.currency_id 
+      ? await Currency.findOne({ currency_id: employee.currency_id })
+      : null;
+
+    const avgTipMin = tipAmounts.length > 0 ? Math.min(...tipAmounts) : 0;
+    const avgTipMax = tipAmounts.length > 0 ? Math.max(...tipAmounts) : 0;
+    const avgTip = tipAmounts.length > 0 ? totalTips / tipAmounts.length : 0;
+    const percentage = tipAmounts.length > 0 ? Math.round((avgTip / avgTipMax) * 100) : 0;
+
+    const totalTipsEarned = {
+      totalTips: Math.round(totalTips),
+      currency: employeeCurrency ? employeeCurrency.name : 'XOF',
+      avgTipMin: Math.round(avgTipMin),
+      avgTipMax: Math.round(avgTipMax),
+      period: '30 days',
+      percentage: percentage
+    };
+
+    // Get feedbacks
+    const employeeFeedbacks = await Employee_Feedback.find({
+      employee_id: parsedEmployeeId,
+      Status: true
+    }).sort({ date: -1 }).limit(10);
+
+    const feedbacks = await Promise.all(employeeFeedbacks.map(async (feedback) => {
+      // Get order to find amount and currency
+      const order = await Pos_Point_sales_Order.findOne({ POS_Order_id: feedback.order_id }) ||
+                    await Quick_Order.findOne({ Quick_Order_id: feedback.order_id });
+      
+      const orderAmount = order ? order.Total : feedback.amount;
+      const orderCurrency = employeeCurrency ? employeeCurrency.name : 'XOF';
+
+      return {
+        feedbackId: feedback.Employee_Feedback_id,
+        comment: feedback.feedback || '',
+        orderId: feedback.order_id.toString(),
+        date: feedback.date ? feedback.date.toISOString().split('T')[0] : null,
+        amount: Math.round(orderAmount),
+        currency: orderCurrency,
+        rating: feedback.ratings || 0,
+        willRecommend: feedback.willRecommendothers || false
+      };
+    }));
+
+    // Calculate overallFeedback
+    const allFeedbacks = await Employee_Feedback.find({
+      employee_id: parsedEmployeeId,
+      Status: true
+    });
+
+    const overallFeedback = {
+      lovedIt: 0,
+      good: 0,
+      average: 0,
+      bad: 0,
+      worst: 0
+    };
+
+    allFeedbacks.forEach(feedback => {
+      const feedbackType = feedback.OveralFeedback?.toLowerCase();
+      if (feedbackType === 'lovedit') overallFeedback.lovedIt++;
+      else if (feedbackType === 'good') overallFeedback.good++;
+      else if (feedbackType === 'averoge') overallFeedback.average++;
+      else if (feedbackType === 'bad') overallFeedback.bad++;
+      else if (feedbackType === 'warst') overallFeedback.worst++;
+    });
+
+    // Calculate staffBehavior and waitingTime
+    const validStaffBehavior = allFeedbacks.filter(f => f.staffBehavier && f.staffBehavier.trim() !== '');
+    let staffBehavior = 'Loved it';
+    
+    if (validStaffBehavior.length > 0) {
+      const staffBehaviorCounts = {};
+      validStaffBehavior.forEach(f => {
+        const behavior = f.staffBehavier.trim();
+        staffBehaviorCounts[behavior] = (staffBehaviorCounts[behavior] || 0) + 1;
+      });
+
+      const mostCommonBehavior = Object.keys(staffBehaviorCounts).reduce((a, b) => 
+        staffBehaviorCounts[a] > staffBehaviorCounts[b] ? a : b
+      );
+      staffBehavior = mostCommonBehavior || 'Loved it';
+    }
+
+    const validWaitingTimes = allFeedbacks.filter(f => f.waitingTime > 0);
+    const avgWaitingTime = validWaitingTimes.length > 0
+      ? validWaitingTimes.reduce((sum, f) => sum + f.waitingTime, 0) / validWaitingTimes.length
+      : 0;
+
+    // Categorize waiting time based on average
+    let waitingTime = 'Loved it';
+    if (avgWaitingTime <= 5) waitingTime = 'Loved it';
+    else if (avgWaitingTime <= 10) waitingTime = 'Good';
+    else if (avgWaitingTime <= 20) waitingTime = 'Average';
+    else if (avgWaitingTime <= 30) waitingTime = 'Bad';
+    else waitingTime = 'Worst';
 
     res.status(200).json({
       success: true,
       message: 'Employee performance retrieved successfully',
       data: {
-        employee_id: parsedEmployeeId,
-        employee_name: `${employee.Name} ${employee.last_name}`,
-        totalSalesContributed: parseFloat(totalSalesContributed.toFixed(2)),
-        TotalOrdersTaken,
-        TotalTablesServed,
-        AvgWorkingHrs: dailyHours,
-        totalTipsEarned: parseFloat(totalTipsEarned.toFixed(2))
+        employeeDetails,
+        AvgWorkingHrs,
+        totalTipsEarned,
+        feedbacks,
+        overallFeedback,
+        staffBehavior,
+        waitingTime
       }
     });
   } catch (error) {
@@ -1395,9 +1590,62 @@ const employeePerformance = async (req, res) => {
   }
 };
 
+// Helper function to get date range for restaurant dashboard
+const getRestaurantDashboardDateRange = (filter) => {
+  const now = new Date();
+  const currentDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  
+  switch (filter) {
+    case 'this_week':
+      // Get start of current week (Monday)
+      const dayOfWeek = now.getDay();
+      const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Monday is day 1
+      const startOfWeek = new Date(currentDate);
+      startOfWeek.setDate(currentDate.getDate() + diff);
+      startOfWeek.setHours(0, 0, 0, 0);
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setDate(startOfWeek.getDate() + 7);
+      return {
+        start: startOfWeek,
+        end: endOfWeek
+      };
+    case 'this_month':
+      return {
+        start: new Date(now.getFullYear(), now.getMonth(), 1),
+        end: new Date(now.getFullYear(), now.getMonth() + 1, 1)
+      };
+    case '6_month':
+      return {
+        start: new Date(now.getFullYear(), now.getMonth() - 6, 1),
+        end: new Date(now.getFullYear(), now.getMonth() + 1, 1)
+      };
+    case 'one_year':
+      return {
+        start: new Date(now.getFullYear() - 1, now.getMonth(), 1),
+        end: new Date(now.getFullYear(), now.getMonth() + 1, 1)
+      };
+    default:
+      // Default to this week
+      const defaultDayOfWeek = now.getDay();
+      const defaultDiff = defaultDayOfWeek === 0 ? -6 : 1 - defaultDayOfWeek;
+      const defaultStartOfWeek = new Date(currentDate);
+      defaultStartOfWeek.setDate(currentDate.getDate() + defaultDiff);
+      defaultStartOfWeek.setHours(0, 0, 0, 0);
+      const defaultEndOfWeek = new Date(defaultStartOfWeek);
+      defaultEndOfWeek.setDate(defaultStartOfWeek.getDate() + 7);
+      return {
+        start: defaultStartOfWeek,
+        end: defaultEndOfWeek
+      };
+  }
+};
+
 // Restaurant Dashboard API
 const restaurantDashboard = async (req, res) => {
   try {
+    // Get filter from query parameter (this_week, this_month, 6_month, one_year)
+    const { filter = 'this_week' } = req.query;
+    
     // Get restaurant ID from authenticated user or params
     const restaurantId = req.user?.user_id;
     
@@ -1426,6 +1674,9 @@ const restaurantDashboard = async (req, res) => {
       });
     }
 
+    // Get date range based on filter
+    const dateRange = getRestaurantDashboardDateRange(filter);
+
     // Get all employees created by this restaurant
     const employees = await User.find({ 
       CreateBy: restaurantId, 
@@ -1433,14 +1684,16 @@ const restaurantDashboard = async (req, res) => {
     });
     const employeeIds = employees.map(emp => emp.user_id);
 
-    // Get all orders for this restaurant
+    // Get all orders for this restaurant within date range
     const posOrderQuery = { 
       Restaurant_id: restaurantId,
-      Status: true 
+      Status: true,
+      CreateAt: { $gte: dateRange.start, $lt: dateRange.end }
     };
     
     const quickOrderQuery = { 
-      Status: true 
+      Status: true,
+      CreateAt: { $gte: dateRange.start, $lt: dateRange.end }
     };
     
     if (employeeIds.length > 0) {
@@ -1452,7 +1705,11 @@ const restaurantDashboard = async (req, res) => {
     const [posOrders, quickOrders, allCustomers] = await Promise.all([
       Pos_Point_sales_Order.find(posOrderQuery).sort({ CreateAt: -1 }),
       Quick_Order.find(quickOrderQuery).sort({ CreateAt: -1 }),
-      employeeIds.length > 0 ? Customer.find({ CreateBy: { $in: employeeIds }, Status: true }) : []
+      employeeIds.length > 0 ? Customer.find({ 
+        CreateBy: { $in: employeeIds }, 
+        Status: true,
+        CreateAt: { $gte: dateRange.start, $lt: dateRange.end }
+      }) : []
     ]);
 
     // 1. TotalOrder
@@ -1489,12 +1746,24 @@ const restaurantDashboard = async (req, res) => {
       };
     };
 
-    // Get last 7 days for chart data
-    const last7Days = [];
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date();
+    // Get days for chart data based on filter
+    // For week/month/6month/year, we'll show the last 7 days within the range
+    const daysForChart = [];
+    const endDate = new Date(dateRange.end);
+    const startDate = new Date(dateRange.start);
+    const daysDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+    
+    // If filter is this_week, show all 7 days of the week
+    // Otherwise, show last 7 days within the range
+    const daysToShow = filter === 'this_week' ? 7 : Math.min(7, daysDiff);
+    
+    for (let i = daysToShow - 1; i >= 0; i--) {
+      const date = new Date(endDate);
       date.setDate(date.getDate() - i);
-      last7Days.push(new Date(date.setHours(0, 0, 0, 0)));
+      date.setHours(0, 0, 0, 0);
+      if (date >= startDate && date < endDate) {
+        daysForChart.push(date);
+      }
     }
 
     // 3. RepeatCustomersChart - customers with more than 1 order
@@ -1522,9 +1791,9 @@ const restaurantDashboard = async (req, res) => {
       customerId => customerOrderCounts[customerId] > 1
     ).map(id => parseInt(id));
 
-    // Count repeat customers by day of week in last 7 days
+    // Count repeat customers by day of week within date range
     const repeatCustomersByDay = {};
-    last7Days.forEach(day => {
+    daysForChart.forEach(day => {
       const dayName = getDayName(day);
       const nextDay = new Date(day);
       nextDay.setDate(nextDay.getDate() + 1);
@@ -1559,8 +1828,8 @@ const restaurantDashboard = async (req, res) => {
     // 4. NewCustomersChart - first-time customers
     const newCustomersData = initializeWeekData();
     
-    // Get customers created in last 7 days
-    last7Days.forEach(day => {
+    // Get customers created within date range by day
+    daysForChart.forEach(day => {
       const dayName = getDayName(day);
       const nextDay = new Date(day);
       nextDay.setDate(nextDay.getDate() + 1);
@@ -1583,15 +1852,18 @@ const restaurantDashboard = async (req, res) => {
       Days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
     };
 
-    // 5. ReservationsOrderList - Get recent reservations
+    // 5. ReservationsOrderList - Get recent reservations within date range
     const reservationQuery = {
-      Status: true
+      Status: true,
+      CreateAt: { $gte: dateRange.start, $lt: dateRange.end }
     };
     
-    if (employeeIds.length > 0) {
-      reservationQuery.CreateBy = { $in: employeeIds };
+    // Include restaurant owner and all employees
+    const reservationCreators = [restaurantId, ...employeeIds];
+    if (reservationCreators.length > 0) {
+      reservationQuery.CreateBy = { $in: reservationCreators };
     } else {
-      reservationQuery.CreateBy = { $in: [-1] };
+      reservationQuery.CreateBy = { $in: [restaurantId] };
     }
     
     const reservations = await Reservations.find(reservationQuery)
@@ -1697,7 +1969,12 @@ const restaurantDashboard = async (req, res) => {
       TotalSale: parseFloat(TotalSale.toFixed(2)),
       ReservationsOrderList,
       TopSellersItemList,
-      StockAlertList
+      StockAlertList,
+      filter: filter,
+      dateRange: {
+        start: dateRange.start,
+        end: dateRange.end
+      }
     };
 
     res.status(200).json({
