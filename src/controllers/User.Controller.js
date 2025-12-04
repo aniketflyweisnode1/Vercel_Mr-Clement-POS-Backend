@@ -73,6 +73,7 @@ const createUser = async (req, res) => {
       yearsWithus,
       isLoginPermission,
       Permissions_type_id,
+      IsPermissons,
       Status,
       CreateBy: req.user?.user_id || null
     });
@@ -106,7 +107,7 @@ const createUser = async (req, res) => {
         if (!existingPermissions) {
           const subAdminPermissions = new SubAdmin_Permissions({
             User_id: savedUser.user_id,
-            IsPermissons: [{ type: 'Dashboard', status: false }],
+            IsPermissons: IsPermissons || [{ type: 'Dashboard', status: false }],
             role_id: savedUser.Role_id,
             Status: true,
             CreateBy: req.user?.user_id || savedUser.user_id
