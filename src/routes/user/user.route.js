@@ -11,6 +11,7 @@ const {
   getEmployeesByRestaurantId,
   getEmployeesByClientId,
   getEmployeeDetailsById,
+  getUsersByRoleId,
   logout,
   createEmployee
 } = require('../../controllers/User.Controller.js');
@@ -54,6 +55,9 @@ router.get('/getbyid/:id', auth, getUserById);
 
 // Get user by auth (current logged in user)
 router.get('/getbyauth', auth, getUserByAuth);
+
+// Get users by role ID
+router.get('/getbyroleid/:roleId', auth, getUsersByRoleId);
 
 // Update user
 router.put('/update', auth, validateUpdateUser, handleValidationErrors, updateUser);

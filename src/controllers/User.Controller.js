@@ -1643,6 +1643,90 @@ const getEmployeeDetailsById = async (req, res) => {
   }
 };
 
+// Get Users by Role ID
+const getUsersByRoleId = async (req, res) => {
+  try {
+    const { roleId } = req.params;
+    const parsedRoleId = parseInt(roleId);
+
+    if (!roleId || isNaN(parsedRoleId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid role ID is required'
+      });
+    }
+
+    // Verify role exists
+    const role = await Role.findOne({ Role_id: parsedRoleId });
+    if (!role) {
+      return res.status(404).json({
+        success: false,
+        message: 'Role not found'
+      });
+    }
+
+    // Find all users with this role
+    const users = await User.find({ 
+      Role_id: parsedRoleId, 
+      Status: true 
+    }).sort({ CreateAt: -1 });
+
+    if (!users || users.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `No users found with role "${role.role_name}"`
+      });
+    }
+
+    // Manually fetch related data for all users
+    const usersResponse = await Promise.all(users.map(async (user) => {
+      const [responsibility, userRole, language, currency, country, state, city, createByUser, updatedByUser] = await Promise.all([
+        Responsibility.findOne({ Responsibility_id: user.Responsibility_id }),
+        Role.findOne({ Role_id: user.Role_id }),
+        Language.findOne({ Language_id: user.Language_id }),
+        user.currency_id ? Currency.findOne({ currency_id: user.currency_id }) : null,
+        Country.findOne({ Country_id: user.Country_id }),
+        State.findOne({ State_id: user.State_id }),
+        City.findOne({ City_id: user.City_id }),
+        user.CreateBy ? User.findOne({ user_id: user.CreateBy }) : null,
+        user.UpdatedBy ? User.findOne({ user_id: user.UpdatedBy }) : null
+      ]);
+
+      const userObj = user.toObject();
+      userObj.Responsibility_id = responsibility ? { Responsibility_id: responsibility.Responsibility_id, Responsibility_name: responsibility.Responsibility_name } : null;
+      userObj.Role_id = userRole ? { Role_id: userRole.Role_id, role_name: userRole.role_name } : null;
+      userObj.Language_id = language ? { Language_id: language.Language_id, Language_name: language.Language_name } : null;
+      userObj.currency_id = currency ? { currency_id: currency.currency_id, name: currency.name, icon: currency.icon } : null;
+      userObj.Country_id = country ? { Country_id: country.Country_id, Country_name: country.Country_name, code: country.code } : null;
+      userObj.State_id = state ? { State_id: state.State_id, state_name: state.state_name, Code: state.Code } : null;
+      userObj.City_id = city ? { City_id: city.City_id, City_name: city.City_name, Code: city.Code } : null;
+      userObj.CreateBy = createByUser ? { user_id: createByUser.user_id, Name: createByUser.Name, email: createByUser.email } : null;
+      userObj.UpdatedBy = updatedByUser ? { user_id: updatedByUser.user_id, Name: updatedByUser.Name, email: updatedByUser.email } : null;
+
+      // Remove password from response
+      delete userObj.password;
+      return userObj;
+    }));
+
+    res.status(200).json({
+      success: true,
+      message: 'Users retrieved successfully',
+      role: {
+        Role_id: role.Role_id,
+        role_name: role.role_name
+      },
+      count: usersResponse.length,
+      data: usersResponse
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching users by role ID',
+      error: error.message
+    });
+  }
+};
+
 // Get Employee by ID - Clean response with essential fields
 const getEmployeeById = async (req, res) => {
   try {
@@ -1798,6 +1882,7 @@ module.exports = {
   getEmployeeDetailsById,
   getRestaurantEmployeeByRole,
   getEmployeeById,
+  getUsersByRoleId,
   logout,
   createEmployee
 };
