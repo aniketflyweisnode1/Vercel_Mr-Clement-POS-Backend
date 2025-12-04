@@ -67,8 +67,8 @@ const validateCreateUser = [
     .withMessage('Gender must be Male, Female, or Other'),
   body('user_image')
     .optional()
-    .isURL()
-    .withMessage('User image must be a valid URL'),
+    .isString()
+    .withMessage('User image must be a string'),
   body('OnboardingDate')
     .optional()
     .isISO8601()
@@ -170,8 +170,8 @@ const validateUpdateUser = [
     .withMessage('Gender must be Male, Female, or Other'),
   body('user_image')
     .optional()
-    .isURL()
-    .withMessage('User image must be a valid URL'),
+    .isString()
+    .withMessage('User image must be a string'),
   body('OnboardingDate')
     .optional()
     .isISO8601()

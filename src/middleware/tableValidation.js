@@ -15,8 +15,8 @@ const validateCreateTable = [
   body('image')
     .optional()
     .trim()
-    .isURL()
-    .withMessage('Image must be a valid URL'),
+    .isString()
+    .withMessage('Image must be a string'),
   body('Table-name')
     .trim()
     .notEmpty()
@@ -77,8 +77,8 @@ const validateUpdateTable = [
   body('image')
     .optional()
     .trim()
-    .isURL()
-    .withMessage('Image must be a valid URL'),
+    .isString()
+    .withMessage('Image must be a string'),
   body('Table-name')
     .optional()
     .trim()

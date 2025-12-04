@@ -10,8 +10,8 @@ const validateCreateItemsTypes = [
   body('image')
     .optional()
     .trim()
-    .isURL()
-    .withMessage('Image must be a valid URL'),
+    .isString()
+    .withMessage('Image must be a string'),
   body('Name')
     .trim()
     .notEmpty()
@@ -45,8 +45,8 @@ const validateUpdateItemsTypes = [
   body('image')
     .optional()
     .trim()
-    .isURL()
-    .withMessage('Image must be a valid URL'),
+    .isString()
+    .withMessage('Image must be a string'),
   body('Name')
     .optional()
     .trim()

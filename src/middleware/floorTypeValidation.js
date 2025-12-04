@@ -10,8 +10,8 @@ const validateCreateFloorType = [
   body('Floor_image')
     .optional()
     .trim()
-    .isURL()
-    .withMessage('Floor image must be a valid URL'),
+    .isString()
+    .withMessage('Floor image must be a string'),
   body('Floor_Type_Name')
     .trim()
     .notEmpty()
@@ -45,8 +45,8 @@ const validateUpdateFloorType = [
   body('Floor_image')
     .optional()
     .trim()
-    .isURL()
-    .withMessage('Floor image must be a valid URL'),
+    .isString()
+    .withMessage('Floor image must be a string'),
   body('Floor_Type_Name')
     .optional()
     .trim()
