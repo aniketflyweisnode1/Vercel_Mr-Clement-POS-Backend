@@ -254,6 +254,10 @@ const getPaymentByRestaurantById = async (req, res) => {
     paymentResponse.Order_id = order ? {
       POS_Order_id: order.POS_Order_id,
       Total: order.Total,
+      SubTotal: order.SubTotal,
+      Tax: order.Tax,
+      Dining_Option: order.Dining_Option,
+      Table_id: order.Table_id,
       Order_Status: order.Order_Status,
       payment_status: order.payment_status
     } : null;
@@ -322,6 +326,10 @@ const getAllPaymentsByRestaurant = async (req, res) => {
         paymentObj.Order_id = order ? {
           POS_Order_id: order.POS_Order_id,
           Total: order.Total,
+          SubTotal: order.SubTotal,
+          Tax: order.Tax,
+          Dining_Option: order.Dining_Option,
+          Table_id: order.Table_id,
           Order_Status: order.Order_Status,
           payment_status: order.payment_status
         } : null;
@@ -435,6 +443,10 @@ const getPaymentsByPaymentOptions = async (req, res) => {
         paymentObj.Order_id = order ? {
           POS_Order_id: order.POS_Order_id,
           Total: order.Total,
+          SubTotal: order.SubTotal,
+          Tax: order.Tax,
+          Dining_Option: order.Dining_Option,
+          Table_id: order.Table_id,
           Order_Status: order.Order_Status,
           payment_status: order.payment_status
         } : null;
@@ -503,6 +515,10 @@ const getPaymentsByAuth = async (req, res) => {
         paymentObj.Order_id = order ? {
           POS_Order_id: order.POS_Order_id,
           Total: order.Total,
+          SubTotal: order.SubTotal,
+          Tax: order.Tax,
+          Dining_Option: order.Dining_Option,
+          Table_id: order.Table_id,
           Order_Status: order.Order_Status,
           payment_status: order.payment_status
         } : null;
