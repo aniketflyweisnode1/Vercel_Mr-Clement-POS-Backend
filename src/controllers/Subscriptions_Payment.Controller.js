@@ -17,6 +17,7 @@ const createSubscriptionsPayment = async (req, res) => {
       Payment,
       Payment_Options_id,
       PaymentStatus,
+      referenceNumber,
       amount
     } = req.body;
 
@@ -109,7 +110,7 @@ const createSubscriptionsPayment = async (req, res) => {
       payment_method: paymentMethod,
       transactionType: 'Plan_Buy',
       transaction_date: new Date(),
-      reference_number: `SUBSCRIPTION-PAYMENT-${Plan_map_Client_id}`,
+      reference_number: referenceNumber,
       created_by: userId,
       created_at: new Date()
     });

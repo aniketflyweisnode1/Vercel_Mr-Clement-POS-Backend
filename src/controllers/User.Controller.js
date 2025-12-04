@@ -36,6 +36,7 @@ const createUser = async (req, res) => {
       OnboardingDate,
       yearsWithus,
       isLoginPermission,
+      IsPermissons,
       Status
     } = req.body;
 
@@ -73,7 +74,6 @@ const createUser = async (req, res) => {
       yearsWithus,
       isLoginPermission,
       Permissions_type_id,
-      IsPermissons,
       Status,
       CreateBy: req.user?.user_id || null
     });
