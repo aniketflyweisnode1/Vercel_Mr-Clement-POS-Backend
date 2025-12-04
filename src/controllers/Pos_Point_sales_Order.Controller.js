@@ -118,8 +118,8 @@ const createPosOrder = async (req, res) => {
         });
       }
 
-      // Calculate base price
-      let basePrice = item.prices || 0;
+      // Calculate base price from item
+      let basePrice = item['item-price'] || 0;
       let addonPrice = 0;
       let variantPrice = 0;
 
@@ -129,6 +129,7 @@ const createPosOrder = async (req, res) => {
         if (addon) {
           addonPrice = addon.prices || 0;
         }
+        // If addon not found, addonPrice remains 0 (no error thrown)
       }
 
       // Calculate variant price if provided
@@ -137,9 +138,11 @@ const createPosOrder = async (req, res) => {
         if (variant) {
           variantPrice = variant.prices || 0;
         }
+        // If variant not found, variantPrice remains 0 (no error thrown)
       }
 
       // Calculate item subtotal: (base price + addon price + variant price) * quantity
+      console.log("======================\n\n", basePrice, addonPrice, variantPrice);
       const unitPrice = basePrice + addonPrice + variantPrice;
       const itemSubTotal = unitPrice * item_Quentry;
       totalSubTotal += itemSubTotal;
@@ -288,8 +291,8 @@ const updatePosOrder = async (req, res) => {
           });
         }
 
-        // Calculate base price
-        let basePrice = item.prices || 0;
+        // Calculate base price from item
+        let basePrice = item['item-price'] || 0;
         let addonPrice = 0;
         let variantPrice = 0;
 
@@ -299,6 +302,7 @@ const updatePosOrder = async (req, res) => {
           if (addon) {
             addonPrice = addon.prices || 0;
           }
+          // If addon not found, addonPrice remains 0 (no error thrown)
         }
 
         // Calculate variant price if provided
@@ -307,6 +311,7 @@ const updatePosOrder = async (req, res) => {
           if (variant) {
             variantPrice = variant.prices || 0;
           }
+          // If variant not found, variantPrice remains 0 (no error thrown)
         }
 
         // Calculate item subtotal: (base price + addon price + variant price) * quantity
@@ -676,6 +681,22 @@ const updatePosOrderStatus = async (req, res) => {
     const { id, Order_Status } = req.body;
     const userId = req.user.user_id;
 
+    if (!id || !Order_Status) {
+      return res.status(400).json({
+        success: false,
+        message: 'POS order ID and Order_Status are required'
+      });
+    }
+
+    // Validate Order_Status
+    const validOrderStatuses = ['Preparing', 'Served', 'Cancelled'];
+    if (!validOrderStatuses.includes(Order_Status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid Order_Status. Must be one of: ${validOrderStatuses.join(', ')}`
+      });
+    }
+
     const posOrder = await Pos_Point_sales_Order.findOne({ POS_Order_id: parseInt(id) });
     if (!posOrder) {
       return res.status(404).json({
@@ -687,7 +708,17 @@ const updatePosOrderStatus = async (req, res) => {
     const requesterIsRestaurant = await isRestaurantRole(req.user.role);
     ensureRestaurantOwnership(posOrder, requesterIsRestaurant, req.user.user_id);
 
+    // Update order status
     posOrder.Order_Status = Order_Status;
+    
+    // Update all items' status to match the order status
+    if (posOrder.items && Array.isArray(posOrder.items)) {
+      posOrder.items = posOrder.items.map(item => ({
+        ...item,
+        item_status: Order_Status
+      }));
+    }
+    
     posOrder.UpdatedBy = userId;
     posOrder.UpdatedAt = new Date();
 
@@ -695,7 +726,7 @@ const updatePosOrderStatus = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: 'POS order status updated successfully',
+      message: 'POS order status and items status updated successfully',
       data: updatedOrder
     });
   } catch (error) {
