@@ -1,20 +1,15 @@
 const mongoose = require('mongoose');
 const AutoIncrement = require('mongoose-sequence')(mongoose);
 
-const planMapClientSchema = new mongoose.Schema({
-  Plan_map_Client_id: {
+const subscriptionsPaymentSchema = new mongoose.Schema({
+  Subscriptions_Payment_id: {
     type: Number,
     unique: true,
     auto: true
   },
-  client_id: {
+  Plan_map_Client_id: {
     type: Number,
-    ref: 'Clients',
-    required: true
-  },
-  plan_id: {
-    type: Number,
-    ref: 'Plan',
+    ref: 'Plan_map_Client',
     required: true
   },
   Transaction_id: {
@@ -37,14 +32,15 @@ const planMapClientSchema = new mongoose.Schema({
     ref: 'Payment_Options',
     default: null
   },
-  PlanExpiryDate: {
-    type: Date,
-    default: null
-  },
   PaymentStatus: {
     type: String,
     enum: ['Pending', 'Success', 'Failed', 'Cancelled'],
     default: 'Pending'
+  },
+  amount: {
+    type: Number,
+    required: true,
+    min: 0
   },
   Status: {
     type: Boolean,
@@ -52,7 +48,8 @@ const planMapClientSchema = new mongoose.Schema({
   },
   CreateBy: {
     type: Number,
-    ref: 'User'
+    ref: 'User',
+    required: true
   },
   CreateAt: {
     type: Date,
@@ -60,7 +57,8 @@ const planMapClientSchema = new mongoose.Schema({
   },
   UpdatedBy: {
     type: Number,
-    ref: 'User'
+    ref: 'User',
+    default: null
   },
   UpdatedAt: {
     type: Date,
@@ -71,7 +69,8 @@ const planMapClientSchema = new mongoose.Schema({
   versionKey: false
 });
 
-// Auto-increment for Plan_map_Client_id
-planMapClientSchema.plugin(AutoIncrement, { inc_field: 'Plan_map_Client_id' });
+// Auto-increment for Subscriptions_Payment_id
+subscriptionsPaymentSchema.plugin(AutoIncrement, { inc_field: 'Subscriptions_Payment_id' });
 
-module.exports = mongoose.model('Plan_map_Client', planMapClientSchema);
+module.exports = mongoose.model('Subscriptions_Payment', subscriptionsPaymentSchema);
+

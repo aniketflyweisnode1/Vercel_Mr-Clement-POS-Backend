@@ -6,22 +6,26 @@ const {
   updatePlanMapClient,
   getPlanMapClientById,
   getAllPlanMapClients,
-  getPlanMapClientByAuth
+  getPlanMapClientByAuth,
+  getSubscriptionsList
 } = require('../../controllers/Plan_map_Client.Controller');
 
 // Create plan map client (with auth)
-router.post('/create', auth, createPlanMapClient);
+router.post('/create-Subscriptions', auth, createPlanMapClient);
 
 // Update plan map client (with auth)
-router.put('/update', auth, updatePlanMapClient);
+router.put('/update-Subscriptions', auth, updatePlanMapClient);
 
 // Get plan map client by ID (with auth)
-router.get('/getbyid/:id', auth, getPlanMapClientById);
+router.get('/getbyid-Subscriptions/:id', auth, getPlanMapClientById);
 
 // Get all plan map clients (with auth)
-router.get('/getall', auth, getAllPlanMapClients);
+router.get('/getall-Subscriptions', auth, getAllPlanMapClients);
 
 // Get plan map client by auth (with auth)
 router.get('/getbyauth', auth, getPlanMapClientByAuth);
+
+// Get subscriptions list with date filter (with auth)
+router.get('/getSubscriptionsList', auth, getSubscriptionsList);
 
 module.exports = router;
