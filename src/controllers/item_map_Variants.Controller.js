@@ -266,6 +266,7 @@ const getItemMapVariantsByItemId = async (req, res) => {
         const itemMapVariantResponse = itemMapVariant.toObject();
         itemMapVariantResponse.item_Variants_id = itemVariant ? { item_Variants_id: itemVariant.item_Variants_id, Variants: itemVariant.Variants } : null;
         itemMapVariantResponse.item_id = item ? { Items_id: item.Items_id, 'item-name': item['item-name'], 'item-code': item['item-code'] } : null;
+        itemMapVariantResponse.Item_prices = item ? item['item-price'] : null;
         itemMapVariantResponse.CreateBy = createByUser ? { user_id: createByUser.user_id, Name: createByUser.Name, email: createByUser.email } : null;
         itemMapVariantResponse.UpdatedBy = updatedByUser ? { user_id: updatedByUser.user_id, Name: updatedByUser.Name, email: updatedByUser.email } : null;
 

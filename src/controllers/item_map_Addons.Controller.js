@@ -266,6 +266,7 @@ const getItemMapAddonsByItemId = async (req, res) => {
         const itemMapAddonResponse = itemMapAddon.toObject();
         itemMapAddonResponse.item_Addons_id = itemAddon ? { item_Addons_id: itemAddon.item_Addons_id, Addons: itemAddon.Addons } : null;
         itemMapAddonResponse.item_id = item ? { Items_id: item.Items_id, 'item-name': item['item-name'], 'item-code': item['item-code'] } : null;
+        itemMapAddonResponse.Item_prices = item ? item['item-price'] : null;
         itemMapAddonResponse.CreateBy = createByUser ? { user_id: createByUser.user_id, Name: createByUser.Name, email: createByUser.email } : null;
         itemMapAddonResponse.UpdatedBy = updatedByUser ? { user_id: updatedByUser.user_id, Name: updatedByUser.Name, email: updatedByUser.email } : null;
 

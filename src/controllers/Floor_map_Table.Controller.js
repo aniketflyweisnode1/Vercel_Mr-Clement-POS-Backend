@@ -5,6 +5,9 @@ const Floor_Type = require('../models/Floor_Type.model');
 const Table = require('../models/Table.model');
 const Table_types = require('../models/Table_types.model');
 const Table_Booking_Status = require('../models/Table-Booking-Status.model');
+const Quick_Order = require('../models/Quick_Order.model');
+const Reservations = require('../models/Reservations.model');
+const Pos_Point_sales_Order = require('../models/Pos_Point_sales_Order.model');
 
 // Create Floor Map Table
 const createFloorMapTable = async (req, res) => {
@@ -442,6 +445,54 @@ const getFloorMapTableByAuth = async (req, res) => {
           { Table_types_id: tableTypeData.Table_types_id, Name: tableTypeData.Name, emozi: tableTypeData.emozi } : null;
         tableObj['Table-Booking-Status_id'] = tableBookingStatusData ? 
           { 'Table-Booking-Status_id': tableBookingStatusData['Table-Booking-Status_id'], Name: tableBookingStatusData.Name } : null;
+        
+        // Check for active orders and bookings
+        const tableId = tableData.Table_id;
+        const currentDate = new Date();
+        
+        // Check for active Quick Orders
+        const activeQuickOrder = await Quick_Order.findOne({
+          Table_id: tableId,
+          Order_Status: { $ne: 'Cancelled' },
+          Status: true
+        });
+        
+        // Check for active POS Orders
+        const activePosOrder = await Pos_Point_sales_Order.findOne({
+          Table_id: tableId,
+          Order_Status: { $ne: 'Cancelled' },
+          Status: true
+        });
+        
+        // Check for active Reservations (current or future)
+        const activeReservation = await Reservations.findOne({
+          $or: [
+            { Table_id: tableId },
+            { Addone_Table_id: tableId }
+          ],
+          Status: true,
+          Date_time: { $gte: currentDate }
+        });
+        
+        // Determine table status
+        let table_status = 'Available'; // Default status
+        
+        if (!tableData.Status) {
+          table_status = 'Inactive';
+        } else if (activeQuickOrder || activePosOrder) {
+          table_status = 'Occupied';
+        } else if (activeReservation) {
+          table_status = 'Reserved';
+        } else if (tableData['Table-Booking-Status_id'] && tableData['Table-Booking-Status_id'] !== 1) {
+          // If booking status is not 1 (Available), use the booking status name
+          table_status = tableBookingStatusData ? tableBookingStatusData.Name : 'Unavailable';
+        }
+        
+        // Add table_status to table object
+        tableObj.table_status = table_status;
+        tableObj.has_active_order = !!(activeQuickOrder || activePosOrder);
+        tableObj.has_active_booking = !!activeReservation;
+        
         floorMapTableObj.table_id = tableObj;
       } else {
         floorMapTableObj.table_id = null;
