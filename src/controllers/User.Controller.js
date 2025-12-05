@@ -1681,7 +1681,7 @@ const getUsersByRoleId = async (req, res) => {
 
     // Manually fetch related data for all users
     const usersResponse = await Promise.all(users.map(async (user) => {
-      const [responsibility, userRole, language, currency, country, state, city, createByUser, updatedByUser] = await Promise.all([
+      const [responsibility, userRole, language, currency, country, state, city, createByUser, updatedByUser, subAdminPermissions] = await Promise.all([
         Responsibility.findOne({ Responsibility_id: user.Responsibility_id }),
         Role.findOne({ Role_id: user.Role_id }),
         Language.findOne({ Language_id: user.Language_id }),
@@ -1690,7 +1690,8 @@ const getUsersByRoleId = async (req, res) => {
         State.findOne({ State_id: user.State_id }),
         City.findOne({ City_id: user.City_id }),
         user.CreateBy ? User.findOne({ user_id: user.CreateBy }) : null,
-        user.UpdatedBy ? User.findOne({ user_id: user.UpdatedBy }) : null
+        user.UpdatedBy ? User.findOne({ user_id: user.UpdatedBy }) : null,
+        SubAdmin_Permissions.findOne({ User_id: user.user_id, Status: true })
       ]);
 
       const userObj = user.toObject();
@@ -1703,6 +1704,13 @@ const getUsersByRoleId = async (req, res) => {
       userObj.City_id = city ? { City_id: city.City_id, City_name: city.City_name, Code: city.Code } : null;
       userObj.CreateBy = createByUser ? { user_id: createByUser.user_id, Name: createByUser.Name, email: createByUser.email } : null;
       userObj.UpdatedBy = updatedByUser ? { user_id: updatedByUser.user_id, Name: updatedByUser.Name, email: updatedByUser.email } : null;
+      userObj.SubAdmin_Permissions = subAdminPermissions ? {
+        SubAdmin_Permissions_id: subAdminPermissions.SubAdmin_Permissions_id,
+        User_id: subAdminPermissions.User_id,
+        IsPermissons: subAdminPermissions.IsPermissons,
+        role_id: subAdminPermissions.role_id,
+        Status: subAdminPermissions.Status
+      } : null;
 
       // Remove password from response
       delete userObj.password;
