@@ -57,7 +57,7 @@ router.get('/getbyid/:id', auth, getUserById);
 router.get('/getbyauth', auth, getUserByAuth);
 
 // Get users by role ID
-router.get('/getbyroleid/:roleId', auth, getUsersByRoleId);
+router.get('/getbyroleid/:roleId', getUsersByRoleId);
 
 // Update user
 router.put('/update', auth, validateUpdateUser, handleValidationErrors, updateUser);
