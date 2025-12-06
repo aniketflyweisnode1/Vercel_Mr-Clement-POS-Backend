@@ -5,6 +5,7 @@ const Quick_Order = require('../models/Quick_Order.model');
 const Delivery_type = require('../models/Delivery_type.model');
 const Customer_type = require('../models/Customer_type.model');
 const Table = require('../models/Table.model');
+const Items = require('../models/Items.model');
 
 // Create invoice
 const createInvoice = async (req, res) => {
@@ -153,6 +154,30 @@ const getAllInvoices = async (req, res) => {
           invoice.Table_id ? Table.findOne({ Table_id: invoice.Table_id }) : null
         ]);
 
+        // Fetch items from order if order exists
+        let items = [];
+        let totalPrice = null;
+        if (orderData && orderData.item_ids && Array.isArray(orderData.item_ids)) {
+          const itemIds = orderData.item_ids.map(item => item.item_id || item);
+          const itemsData = await Items.find({ Items_id: { $in: itemIds } });
+          
+          // Map items with quantities from order
+          items = orderData.item_ids.map(orderItem => {
+            const itemId = orderItem.item_id || orderItem;
+            const itemData = itemsData.find(item => item.Items_id === itemId);
+            return {
+              item_id: itemId,
+              itemName: orderItem.itemName || (itemData ? itemData['item-name'] : 'Unknown Item'),
+              quantity: orderItem.quantity || 1,
+              price: itemData ? itemData['item-price'] : 0,
+              total: (itemData ? itemData['item-price'] : 0) * (orderItem.quantity || 1)
+            };
+          });
+          
+          // Get total price from order
+          totalPrice = orderData.Total || null;
+        }
+
         const invoiceResponse = invoice.toObject();
         invoiceResponse.CreateBy = createByUser ? { user_id: createByUser.user_id, Name: createByUser.Name, email: createByUser.email } : null;
         invoiceResponse.UpdatedBy = updatedByUser ? { user_id: updatedByUser.user_id, Name: updatedByUser.Name, email: updatedByUser.email } : null;
@@ -161,6 +186,8 @@ const getAllInvoices = async (req, res) => {
         invoiceResponse.Delivery_type_id = deliveryTypeData ? { Delivery_type_id: deliveryTypeData.Delivery_type_id, Type_name: deliveryTypeData.Type_name } : null;
         invoiceResponse.Customer_type = customerTypeData ? { Customer_type_id: customerTypeData.Customer_type_id, type: customerTypeData.type } : null;
         invoiceResponse.Table_id = tableData ? { Table_id: tableData.Table_id, Table_name: tableData.Table_name } : null;
+        invoiceResponse.items = items;
+        invoiceResponse.total_price = totalPrice;
 
         return invoiceResponse;
       })
@@ -201,6 +228,30 @@ const getInvoicesByAuth = async (req, res) => {
           invoice.Table_id ? Table.findOne({ Table_id: invoice.Table_id }) : null
         ]);
 
+        // Fetch items from order if order exists
+        let items = [];
+        let totalPrice = null;
+        if (orderData && orderData.item_ids && Array.isArray(orderData.item_ids)) {
+          const itemIds = orderData.item_ids.map(item => item.item_id || item);
+          const itemsData = await Items.find({ Items_id: { $in: itemIds } });
+          
+          // Map items with quantities from order
+          items = orderData.item_ids.map(orderItem => {
+            const itemId = orderItem.item_id || orderItem;
+            const itemData = itemsData.find(item => item.Items_id === itemId);
+            return {
+              item_id: itemId,
+              itemName: orderItem.itemName || (itemData ? itemData['item-name'] : 'Unknown Item'),
+              quantity: orderItem.quantity || 1,
+              price: itemData ? itemData['item-price'] : 0,
+              total: (itemData ? itemData['item-price'] : 0) * (orderItem.quantity || 1)
+            };
+          });
+          
+          // Get total price from order
+          totalPrice = orderData.Total || null;
+        }
+
         const invoiceResponse = invoice.toObject();
         invoiceResponse.CreateBy = createByUser ? { user_id: createByUser.user_id, Name: createByUser.Name, email: createByUser.email } : null;
         invoiceResponse.UpdatedBy = updatedByUser ? { user_id: updatedByUser.user_id, Name: updatedByUser.Name, email: updatedByUser.email } : null;
@@ -209,6 +260,8 @@ const getInvoicesByAuth = async (req, res) => {
         invoiceResponse.Delivery_type_id = deliveryTypeData ? { Delivery_type_id: deliveryTypeData.Delivery_type_id, Type_name: deliveryTypeData.Type_name } : null;
         invoiceResponse.Customer_type = customerTypeData ? { Customer_type_id: customerTypeData.Customer_type_id, type: customerTypeData.type } : null;
         invoiceResponse.Table_id = tableData ? { Table_id: tableData.Table_id, Table_name: tableData.Table_name } : null;
+        invoiceResponse.items = items;
+        invoiceResponse.total_price = totalPrice;
 
         return invoiceResponse;
       })

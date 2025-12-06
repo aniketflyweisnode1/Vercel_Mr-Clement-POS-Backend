@@ -1,6 +1,7 @@
 const Feedback = require('../models/Feedback.model');
 const Feedback_Type = require('../models/Feedback_Type.model');
 const Quick_Order = require('../models/Quick_Order.model');
+const Customer = require('../models/Customer.model');
 
 // Create Feedback
 const createFeedback = async (req, res) => {
@@ -177,6 +178,16 @@ const getFeedbackById = async (req, res) => {
       Quick_Order.findOne({ Quick_Order_id: feedback.order_id, Status: true })
     ]);
 
+    // Get client name from Customer model using client_mobile_no
+    let clientName = null;
+    if (orderData && orderData.client_mobile_no) {
+      const customer = await Customer.findOne({ 
+        phone: orderData.client_mobile_no, 
+        Status: true 
+      });
+      clientName = customer ? customer.Name : null;
+    }
+
     // Create enhanced feedback object
     const enhancedFeedback = {
       ...feedback.toObject(),
@@ -186,7 +197,8 @@ const getFeedbackById = async (req, res) => {
       },
       order_id: {
         Quick_Order_id: orderData?.Quick_Order_id,
-        client_mobile_no: orderData?.client_mobile_no
+        client_mobile_no: orderData?.client_mobile_no,
+        client_name: clientName
       }
     };
 
@@ -246,6 +258,16 @@ const getAllFeedbacks = async (req, res) => {
         Quick_Order.findOne({ Quick_Order_id: feedback.order_id, Status: true })
       ]);
 
+      // Get client name from Customer model using client_mobile_no
+      let clientName = null;
+      if (orderData && orderData.client_mobile_no) {
+        const customer = await Customer.findOne({ 
+          phone: orderData.client_mobile_no, 
+          Status: true 
+        });
+        clientName = customer ? customer.Name : null;
+      }
+
       return {
         ...feedback.toObject(),
         feedback_Type_id: {
@@ -254,7 +276,8 @@ const getAllFeedbacks = async (req, res) => {
         },
         order_id: {
           Quick_Order_id: orderData?.Quick_Order_id,
-          client_mobile_no: orderData?.client_mobile_no
+          client_mobile_no: orderData?.client_mobile_no,
+          client_name: clientName
         }
       };
     }));
@@ -329,6 +352,16 @@ const getFeedbackByOrderId = async (req, res) => {
         Quick_Order.findOne({ Quick_Order_id: feedback.order_id, Status: true })
       ]);
 
+      // Get client name from Customer model using client_mobile_no
+      let clientName = null;
+      if (orderData && orderData.client_mobile_no) {
+        const customer = await Customer.findOne({ 
+          phone: orderData.client_mobile_no, 
+          Status: true 
+        });
+        clientName = customer ? customer.Name : null;
+      }
+
       return {
         ...feedback.toObject(),
         feedback_Type_id: {
@@ -337,7 +370,8 @@ const getFeedbackByOrderId = async (req, res) => {
         },
         order_id: {
           Quick_Order_id: orderData?.Quick_Order_id,
-          client_mobile_no: orderData?.client_mobile_no
+          client_mobile_no: orderData?.client_mobile_no,
+          client_name: clientName
         }
       };
     }));
