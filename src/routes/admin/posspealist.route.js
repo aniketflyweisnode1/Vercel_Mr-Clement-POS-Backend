@@ -10,8 +10,8 @@ const {
   deletePosSpealist
 } = require('../../controllers/PosSpealist.Controller');
 
-// Create PosSpealist (with auth)
-router.post('/create', auth, createPosSpealist);
+// Create PosSpealist (without auth)
+router.post('/create', createPosSpealist);
 
 // Update PosSpealist (with auth)
 router.put('/update', auth, updatePosSpealist);

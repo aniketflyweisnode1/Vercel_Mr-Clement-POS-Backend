@@ -35,7 +35,7 @@ const posSpealistSchema = new mongoose.Schema({
   CreateBy: {
     type: Number,
     ref: 'User',
-    required: true
+    required: false
   },
   CreateAt: {
     type: Date,

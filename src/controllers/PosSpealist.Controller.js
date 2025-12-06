@@ -5,7 +5,7 @@ const User = require('../models/User.model');
 const createPosSpealist = async (req, res) => {
   try {
     const { Name, Business_Name, Email, PhoneNo, Status } = req.body;
-    const userId = req.user.user_id;
+    const userId = req.user?.user_id || null;
 
     if (!Name) {
       return res.status(400).json({
@@ -47,7 +47,7 @@ const createPosSpealist = async (req, res) => {
     const savedPosSpealist = await posSpealist.save();
 
     // Populate CreateBy
-    const createByUser = await User.findOne({ user_id: userId });
+    const createByUser = userId ? await User.findOne({ user_id: userId }) : null;
     const posSpealistResponse = savedPosSpealist.toObject();
     posSpealistResponse.CreateBy = createByUser ? {
       user_id: createByUser.user_id,
