@@ -40,12 +40,8 @@ const createTransaction = async (req, res) => {
       });
     }
 
-    if (!transactionType) {
-      return res.status(400).json({
-        success: false,
-        message: 'transactionType is required'
-      });
-    }
+    // Set default transactionType if not provided
+    const finalTransactionType = transactionType || 'Pending';
 
     // Verify user exists
     const user = await User.findOne({ user_id: parseInt(user_id) });
@@ -62,9 +58,9 @@ const createTransaction = async (req, res) => {
     const transaction = new Transaction({
       user_id: parseInt(user_id),
       amount: parseFloat(amount),
-      status: status || 'pending',
+      status: status || 'Pending',
       payment_method,
-      transactionType,
+      transactionType: finalTransactionType,
       reference_number: reference_number || null,
       CGST: CGST || 0,
       SGST: SGST || 0,

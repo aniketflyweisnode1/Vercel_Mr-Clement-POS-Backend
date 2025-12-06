@@ -11,7 +11,8 @@ const {
   reports,
   cityWiseUsageReport,
   employeePerformance,
-  restaurantDashboard
+  restaurantDashboard,
+  dashboard
 } = require('../../controllers/Reports.Controller');
 
 // Restaurant Reports routes 16/09/2025
@@ -37,5 +38,8 @@ router.get('/employee-performance/:employeeId', auth, employeePerformance);
 
 // Restaurant Dashboard API (id is optional, uses authenticated user if not provided)
 router.get('/restaurant-dashboard', auth, restaurantDashboard);
+
+// Dashboard API - Simple dashboard with TotalOrders, TotalSales, TopSellers, StockAlerts
+router.get('/dashboard', auth, dashboard);
 
 module.exports = router;

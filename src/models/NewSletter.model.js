@@ -10,7 +10,7 @@ const newSletterSchema = new mongoose.Schema({
   user_id: {
     type: Number,
     ref: 'User',
-    required: true
+    required: false
   },
   Email: {
     type: String,
@@ -25,7 +25,7 @@ const newSletterSchema = new mongoose.Schema({
   CreateBy: {
     type: Number,
     ref: 'User',
-    required: true
+    required: false
   },
   CreateAt: {
     type: Date,

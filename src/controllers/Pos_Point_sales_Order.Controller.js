@@ -473,12 +473,69 @@ const getAllPosOrders = async (req, res) => {
   }
 };
 
+// Helper function to get date range based on filter
+const getDateRangeForFilter = (filter) => {
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  startOfDay.setHours(0, 0, 0, 0);
+  
+  switch (filter?.toLowerCase()) {
+    case 'today':
+      return {
+        start: startOfDay,
+        end: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000)
+      };
+    case 'yesterday':
+      const yesterdayStart = new Date(startOfDay);
+      yesterdayStart.setDate(startOfDay.getDate() - 1);
+      return {
+        start: yesterdayStart,
+        end: startOfDay
+      };
+    case 'week':
+      const dayOfWeek = now.getDay();
+      const startOfWeek = new Date(startOfDay);
+      startOfWeek.setDate(startOfDay.getDate() - dayOfWeek);
+      return {
+        start: startOfWeek,
+        end: new Date(startOfWeek.getTime() + 7 * 24 * 60 * 60 * 1000)
+      };
+    case 'month':
+      return {
+        start: new Date(now.getFullYear(), now.getMonth(), 1),
+        end: new Date(now.getFullYear(), now.getMonth() + 1, 1)
+      };
+    case 'year':
+      return {
+        start: new Date(now.getFullYear(), 0, 1),
+        end: new Date(now.getFullYear() + 1, 0, 1)
+      };
+    default:
+      return null; // No filter, return all
+  }
+};
+
 // Get POS orders by authenticated user
 const getPosOrdersByAuth = async (req, res) => {
   try {
     const userId = req.user.user_id;
+    const { filter } = req.query; // filter: today, yesterday, week, month, year
 
-    const posOrders = await Pos_Point_sales_Order.find({ CreateBy: userId })
+    // Build query
+    const query = { CreateBy: userId };
+
+    // Apply date filter if provided
+    if (filter) {
+      const dateRange = getDateRangeForFilter(filter);
+      if (dateRange) {
+        query.CreateAt = {
+          $gte: dateRange.start,
+          $lt: dateRange.end
+        };
+      }
+    }
+
+    const posOrders = await Pos_Point_sales_Order.find(query)
       .sort({ CreateAt: -1 });
 
     // Manually fetch related data for all POS orders
@@ -579,9 +636,25 @@ const getPosOrdersByAuth = async (req, res) => {
       })
     );
 
+    // Get date range info if filter is applied
+    let filterInfo = null;
+    if (filter) {
+      const dateRange = getDateRangeForFilter(filter);
+      if (dateRange) {
+        filterInfo = {
+          filter: filter,
+          dateRange: {
+            start: dateRange.start,
+            end: dateRange.end
+          }
+        };
+      }
+    }
+
     res.status(200).json({
       success: true,
       count: posOrdersWithPopulatedData.length,
+      filter: filterInfo,
       data: posOrdersWithPopulatedData
     });
   } catch (error) {

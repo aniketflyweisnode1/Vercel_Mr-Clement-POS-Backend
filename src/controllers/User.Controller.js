@@ -1878,6 +1878,229 @@ const getEmployeeById = async (req, res) => {
   }
 };
 
+// Get Employees by Role ID (filtered by authenticated restaurant)
+const getEmployeesByRoleId = async (req, res) => {
+  try {
+    const { roleId } = req.params;
+    const restaurantId = req.user.user_id;
+    const parsedRoleId = parseInt(roleId);
+
+    if (!roleId || isNaN(parsedRoleId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid role ID is required'
+      });
+    }
+
+    // Verify authenticated user is a restaurant
+    const restaurantUser = await User.findOne({ user_id: restaurantId });
+    if (!restaurantUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'Restaurant user not found'
+      });
+    }
+
+    const restaurantRole = await Role.findOne({ Role_id: restaurantUser.Role_id });
+    if (!restaurantRole || restaurantRole.role_name?.toLowerCase() !== 'restaurant') {
+      return res.status(400).json({
+        success: false,
+        message: 'Authenticated user is not associated with a restaurant role'
+      });
+    }
+
+    // Verify role exists
+    const role = await Role.findOne({ Role_id: parsedRoleId });
+    if (!role) {
+      return res.status(404).json({
+        success: false,
+        message: 'Role not found'
+      });
+    }
+
+    // Filter employees by restaurant (authenticated user), role, and status
+    const employees = await User.find({
+      CreateBy: restaurantId,
+      Role_id: parsedRoleId,
+      Status: true
+    }).sort({ CreateAt: -1 });
+
+    if (!employees || employees.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `No employees found for this restaurant with role "${role.role_name}"`
+      });
+    }
+
+    // Fetch clock records and reviews for all employees
+    const employeeIds = employees.map(emp => emp.user_id);
+    const [allClocks, allReviews] = await Promise.all([
+      Clock.find({ user_id: { $in: employeeIds }, Status: true }).sort({ CreateAt: -1 }),
+      Review.find({ for_Review_id: { $in: employeeIds }, Status: true }).sort({ CreateAt: -1 })
+    ]);
+
+    // Create maps for quick lookup
+    const clocksByEmployee = {};
+    const reviewsByEmployee = {};
+    
+    allClocks.forEach(clock => {
+      if (!clocksByEmployee[clock.user_id]) {
+        clocksByEmployee[clock.user_id] = [];
+      }
+      clocksByEmployee[clock.user_id].push(clock);
+    });
+
+    allReviews.forEach(review => {
+      if (!reviewsByEmployee[review.for_Review_id]) {
+        reviewsByEmployee[review.for_Review_id] = [];
+      }
+      reviewsByEmployee[review.for_Review_id].push(review);
+    });
+
+    // Populate employee data with related information, shiftTime, and OverAllPerformance
+    const employeesResponse = await Promise.all(employees.map(async (employee) => {
+      const [responsibility, employeeRole, language, currency, country, state, city, createByUser] = await Promise.all([
+        Responsibility.findOne({ Responsibility_id: employee.Responsibility_id }),
+        Role.findOne({ Role_id: employee.Role_id }),
+        Language.findOne({ Language_id: employee.Language_id }),
+        employee.currency_id ? Currency.findOne({ currency_id: employee.currency_id }) : null,
+        Country.findOne({ Country_id: employee.Country_id }),
+        State.findOne({ State_id: employee.State_id }),
+        City.findOne({ City_id: employee.City_id }),
+        employee.CreateBy ? User.findOne({ user_id: employee.CreateBy }) : null
+      ]);
+
+      const employeeObj = employee.toObject();
+      employeeObj.Responsibility_id = responsibility ? { 
+        Responsibility_id: responsibility.Responsibility_id, 
+        Responsibility_name: responsibility.Responsibility_name 
+      } : null;
+      employeeObj.Role_id = employeeRole ? { 
+        Role_id: employeeRole.Role_id, 
+        role_name: employeeRole.role_name 
+      } : null;
+      employeeObj.Language_id = language ? { 
+        Language_id: language.Language_id, 
+        Language_name: language.Language_name 
+      } : null;
+      employeeObj.currency_id = currency ? { 
+        currency_id: currency.currency_id, 
+        name: currency.name, 
+        icon: currency.icon 
+      } : null;
+      employeeObj.Country_id = country ? { 
+        Country_id: country.Country_id, 
+        Country_name: country.Country_name, 
+        code: country.code 
+      } : null;
+      employeeObj.State_id = state ? { 
+        State_id: state.State_id, 
+        state_name: state.state_name, 
+        Code: state.Code 
+      } : null;
+      employeeObj.City_id = city ? { 
+        City_id: city.City_id, 
+        City_name: city.City_name, 
+        Code: city.Code 
+      } : null;
+      employeeObj.CreateBy = createByUser ? { 
+        user_id: createByUser.user_id, 
+        Name: createByUser.Name, 
+        email: createByUser.email 
+      } : null;
+
+      // Calculate shiftTime (shiftTimings)
+      const clockRecords = clocksByEmployee[employee.user_id] || [];
+      let shiftTime = {
+        average_in_time: null,
+        average_out_time: null,
+        average_working_hours: null,
+        total_working_days: 0
+      };
+
+      if (clockRecords.length > 0) {
+        const validRecords = clockRecords.filter(record => record.in_time && record.out_time);
+        
+        if (validRecords.length > 0) {
+          let totalInMinutes = 0;
+          let totalOutMinutes = 0;
+          let totalWorkingHours = 0;
+
+          validRecords.forEach(record => {
+            const inTime = new Date(record.in_time);
+            const outTime = new Date(record.out_time);
+            
+            const inHours = inTime.getHours();
+            const inMinutes = inTime.getMinutes();
+            totalInMinutes += (inHours * 60) + inMinutes;
+
+            const outHours = outTime.getHours();
+            const outMinutes = outTime.getMinutes();
+            totalOutMinutes += (outHours * 60) + outMinutes;
+
+            const workingMs = outTime - inTime;
+            const workingHours = workingMs / (1000 * 60 * 60);
+            totalWorkingHours += workingHours;
+          });
+
+          const avgInMinutes = Math.floor(totalInMinutes / validRecords.length);
+          const avgOutMinutes = Math.floor(totalOutMinutes / validRecords.length);
+          
+          const avgInHours = Math.floor(avgInMinutes / 60);
+          const avgInMins = avgInMinutes % 60;
+          const avgOutHours = Math.floor(avgOutMinutes / 60);
+          const avgOutMins = avgOutMinutes % 60;
+
+          shiftTime.average_in_time = `${String(avgInHours).padStart(2, '0')}:${String(avgInMins).padStart(2, '0')}`;
+          shiftTime.average_out_time = `${String(avgOutHours).padStart(2, '0')}:${String(avgOutMins).padStart(2, '0')}`;
+          shiftTime.average_working_hours = parseFloat((totalWorkingHours / validRecords.length).toFixed(2));
+          shiftTime.total_working_days = validRecords.length;
+        }
+      }
+
+      // Calculate OverAllPerformance (%)
+      const performanceRatings = reviewsByEmployee[employee.user_id] || [];
+      let OverAllPerformance = null;
+      
+      if (performanceRatings.length > 0) {
+        const totalRating = performanceRatings.reduce((sum, review) => sum + (review.ReviewStarCount || 0), 0);
+        const averageRating = totalRating / performanceRatings.length;
+        // Assuming max rating is 5, convert to percentage
+        OverAllPerformance = parseFloat(((averageRating / 5) * 100).toFixed(2));
+      }
+
+      // Add shiftTime and OverAllPerformance fields
+      employeeObj.shiftTime = shiftTime;
+      employeeObj.OverAllPerformance = OverAllPerformance;
+
+      delete employeeObj.password;
+      return employeeObj;
+    }));
+
+    res.status(200).json({
+      success: true,
+      message: 'Employees retrieved successfully',
+      restaurant: {
+        user_id: restaurantUser.user_id,
+        Name: restaurantUser.Name,
+        email: restaurantUser.email
+      },
+      role: {
+        Role_id: role.Role_id,
+        role_name: role.role_name
+      },
+      total_employees: employeesResponse.length,
+      employees: employeesResponse
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching employees by role ID',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   createUser,
   updateUser,
@@ -1892,6 +2115,7 @@ module.exports = {
   getRestaurantEmployeeByRole,
   getEmployeeById,
   getUsersByRoleId,
+  getEmployeesByRoleId,
   logout,
   createEmployee
 };

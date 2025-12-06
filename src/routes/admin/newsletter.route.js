@@ -10,8 +10,8 @@ const {
   deleteNewSletter
 } = require('../../controllers/NewSletter.Controller');
 
-// Create NewSletter (with auth)
-router.post('/create', auth, createNewSletter);
+// Create NewSletter (without auth)
+router.post('/create', createNewSletter);
 
 // Update NewSletter (with auth)
 router.put('/update', auth, updateNewSletter);

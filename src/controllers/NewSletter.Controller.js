@@ -4,15 +4,8 @@ const User = require('../models/User.model');
 // Create NewSletter
 const createNewSletter = async (req, res) => {
   try {
-    const { user_id, Email, Status } = req.body;
-    const userId = req.user.user_id;
-
-    if (!user_id) {
-      return res.status(400).json({
-        success: false,
-        message: 'user_id is required'
-      });
-    }
+    const { Email, Status } = req.body;
+    const userId = req.user?.user_id || null;
 
     if (!Email) {
       return res.status(400).json({
@@ -21,17 +14,7 @@ const createNewSletter = async (req, res) => {
       });
     }
 
-    // Verify user exists
-    const user = await User.findOne({ user_id: parseInt(user_id) });
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-
     const newSletter = new NewSletter({
-      user_id: parseInt(user_id),
       Email: Email.trim().toLowerCase(),
       Status: Status !== undefined ? Status : true,
       CreateBy: userId
@@ -39,20 +22,15 @@ const createNewSletter = async (req, res) => {
 
     const savedNewSletter = await newSletter.save();
 
-    // Populate user data
-    const userData = {
-      user_id: user.user_id,
-      Name: user.Name,
-      email: user.email
-    };
+    // Populate CreateBy if user exists
+    const createByUser = userId ? await User.findOne({ user_id: userId }) : null;
 
     const newSletterResponse = savedNewSletter.toObject();
-    newSletterResponse.user_id = userData;
-    newSletterResponse.CreateBy = {
-      user_id: userId,
-      Name: req.user.Name,
-      email: req.user.email
-    };
+    newSletterResponse.CreateBy = createByUser ? {
+      user_id: createByUser.user_id,
+      Name: createByUser.Name,
+      email: createByUser.email
+    } : null;
 
     res.status(201).json({
       success: true,

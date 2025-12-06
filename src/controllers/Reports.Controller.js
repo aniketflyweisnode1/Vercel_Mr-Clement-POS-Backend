@@ -1991,6 +1991,157 @@ const restaurantDashboard = async (req, res) => {
   }
 };
 
+// Dashboard API - Simple dashboard with TotalOrders, TotalSales, TopSellers, StockAlerts
+const dashboard = async (req, res) => {
+  try {
+    // Get restaurant ID from authenticated user
+    const restaurantId = req.user?.user_id;
+    
+    if (!restaurantId || isNaN(restaurantId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid restaurant ID is required'
+      });
+    }
+
+    // Verify restaurant user exists and has restaurant role
+    const restaurantUser = await User.findOne({ user_id: restaurantId });
+    
+    if (!restaurantUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'Restaurant not found'
+      });
+    }
+
+    const restaurantRole = await Role.findOne({ Role_id: restaurantUser.Role_id });
+    if (!restaurantRole || restaurantRole.role_name?.toLowerCase() !== 'restaurant') {
+      return res.status(400).json({
+        success: false,
+        message: 'Provided user is not associated with a restaurant role'
+      });
+    }
+
+    // Get all employees created by this restaurant
+    const employees = await User.find({ 
+      CreateBy: restaurantId, 
+      Status: true 
+    });
+    const employeeIds = employees.map(emp => emp.user_id);
+
+    // Get all orders for this restaurant
+    const posOrderQuery = { 
+      Restaurant_id: restaurantId,
+      Status: true
+    };
+    
+    const quickOrderQuery = { 
+      Status: true
+    };
+    
+    if (employeeIds.length > 0) {
+      quickOrderQuery['get_order_Employee_id'] = { $in: employeeIds };
+    }
+
+    const [posOrders, quickOrders] = await Promise.all([
+      Pos_Point_sales_Order.find(posOrderQuery),
+      Quick_Order.find(quickOrderQuery)
+    ]);
+
+    // 1. Calculate TotalOrders
+    const TotalOrders = posOrders.length + quickOrders.length;
+
+    // 2. Calculate TotalSales
+    const TotalSales = [...posOrders, ...quickOrders].reduce(
+      (sum, order) => sum + (order.Total || 0), 
+      0
+    );
+
+    // 3. Get TopSellers (limit 10) - Top selling items
+    const itemCounts = {};
+    
+    // Process POS orders
+    posOrders.forEach(order => {
+      if (order.items && Array.isArray(order.items)) {
+        order.items.forEach(item => {
+          if (item.item_id) {
+            itemCounts[item.item_id] = (itemCounts[item.item_id] || 0) + (item.item_Quentry || 0);
+          }
+        });
+      }
+    });
+
+    // Process Quick orders
+    quickOrders.forEach(order => {
+      if (order.item_ids && Array.isArray(order.item_ids)) {
+        order.item_ids.forEach(item => {
+          if (item.item_id) {
+            itemCounts[item.item_id] = (itemCounts[item.item_id] || 0) + (item.quantity || 0);
+          }
+        });
+      }
+    });
+
+    // Get top 10 items
+    const topItemIds = Object.entries(itemCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([itemId]) => parseInt(itemId));
+
+    const topItems = await Items.find({ Items_id: { $in: topItemIds }, Status: true });
+    
+    const TopSellers = topItemIds.map(itemId => {
+      const item = topItems.find(i => i.Items_id === itemId);
+      return {
+        Items_id: itemId,
+        item_name: item ? item['item-name'] : 'Unknown',
+        item_code: item ? item['item-code'] : null,
+        total_quantity_sold: itemCounts[itemId],
+        item_price: item ? item['item-price'] : 0,
+        item_stock_quantity: item ? item['item-stock-quantity'] : 0
+      };
+    });
+
+    // 4. Get StockAlerts (limit 10) - Items with low stock
+    const stockThreshold = 10; // Configurable threshold
+    const lowStockItems = await Items.find({
+      'item-stock-quantity': { $lt: stockThreshold },
+      Status: true
+    })
+    .sort({ 'item-stock-quantity': 1 })
+    .limit(10);
+
+    const StockAlerts = lowStockItems.map(item => ({
+      Items_id: item.Items_id,
+      item_name: item['item-name'],
+      item_code: item['item-code'],
+      item_stock_quantity: item['item-stock-quantity'],
+      item_price: item['item-price'],
+      alert_level: item['item-stock-quantity'] < 5 ? 'Critical' : 'Low'
+    }));
+
+    // Prepare response
+    const dashboardData = {
+      TotalOrders,
+      TotalSales: parseFloat(TotalSales.toFixed(2)),
+      TopSellers,
+      StockAlerts
+    };
+
+    res.status(200).json({
+      success: true,
+      message: 'Dashboard data retrieved successfully',
+      data: dashboardData
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching dashboard data',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   reportsToday,
   reportsMonth,
@@ -2002,5 +2153,6 @@ module.exports = {
   reports,
   cityWiseUsageReport,
   employeePerformance,
-  restaurantDashboard
+  restaurantDashboard,
+  dashboard
 };

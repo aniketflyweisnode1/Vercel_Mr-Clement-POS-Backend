@@ -38,7 +38,7 @@ router.get('/getbyid/:id', auth, getPosOrderById);
 router.get('/getall', auth, getAllPosOrders);
 
 // Get POS orders by authenticated user (with auth)
-router.get('/auth/my-orders', auth, getPosOrdersByAuth);
+router.get('/my-orders', auth, getPosOrdersByAuth);
 
 // Delete POS order (with auth)
 router.delete('/delete/:id', auth, deletePosOrder);
