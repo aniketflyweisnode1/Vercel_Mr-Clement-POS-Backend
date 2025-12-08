@@ -28,4 +28,6 @@ router.get('/getbyauth', auth, getPlanMapClientByAuth);
 // Get subscriptions list with date filter (with auth)
 router.get('/getSubscriptionsList', auth, getSubscriptionsList);
 
+
+
 module.exports = router;

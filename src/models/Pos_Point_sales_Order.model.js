@@ -14,7 +14,7 @@ const posPointSalesOrderSchema = new mongoose.Schema({
     item_Variants_id: { type: Number, ref: 'item_Variants' },
     item_status: {
       type: String,
-      enum: ['Preparing', 'Served', 'Cancelled'],
+      enum: ['Preparing', 'Served', 'Cancelled', 'Completed'],
       default: 'Preparing'
     },
     item_size: {
@@ -40,7 +40,7 @@ const posPointSalesOrderSchema = new mongoose.Schema({
   },
   Order_Status: {
     type: String,
-    enum: ['Preparing', 'Served', 'Cancelled'],
+    enum: ['Preparing', 'Served', 'Cancelled', 'Completed'],
     default: 'Preparing'
   },
   payment_status: {

@@ -267,8 +267,8 @@ const updatePosOrder = async (req, res) => {
       posOrder.Restaurant_id = resolvedRestaurantId;
     }
 
-    // If order status is changed to "Served" or "Cancelled", reset table status to 1 (Available/Waiting for next booking)
-    if (Order_Status !== undefined && (Order_Status === 'Served' || Order_Status === 'Cancelled') && posOrder.Table_id) {
+    // If order status is changed to "Served", "Completed", or "Cancelled", reset table status to 1 (Available/Waiting for next booking)
+    if (Order_Status !== undefined && (Order_Status === 'Served' || Order_Status === 'Completed' || Order_Status === 'Cancelled') && posOrder.Table_id) {
       await Table.findOneAndUpdate(
         { Table_id: posOrder.Table_id },
         {
@@ -774,7 +774,7 @@ const updatePosOrderStatus = async (req, res) => {
     }
 
     // Validate Order_Status
-    const validOrderStatuses = ['Preparing', 'Served', 'Cancelled'];
+    const validOrderStatuses = ['Preparing', 'Served', 'Cancelled', 'Completed'];
     if (!validOrderStatuses.includes(Order_Status)) {
       return res.status(400).json({
         success: false,
@@ -809,8 +809,8 @@ const updatePosOrderStatus = async (req, res) => {
 
     const updatedOrder = await posOrder.save();
 
-    // If order status is "Served" or "Cancelled", reset table status to 1 (Available/Waiting for next booking)
-    if ((Order_Status === 'Served' || Order_Status === 'Cancelled') && posOrder.Table_id) {
+    // If order status is "Served", "Completed", or "Cancelled", reset table status to 1 (Available/Waiting for next booking)
+    if ((Order_Status === 'Served' || Order_Status === 'Completed' || Order_Status === 'Cancelled') && posOrder.Table_id) {
       await Table.findOneAndUpdate(
         { Table_id: posOrder.Table_id },
         {
@@ -853,10 +853,10 @@ const getCurrentOrderOnTableByTableId = async (req, res) => {
       });
     }
 
-    // Find active POS order on this table (not Served or Cancelled)
+    // Find active POS order on this table (not Served, Completed, or Cancelled)
     const posOrder = await Pos_Point_sales_Order.findOne({
       Table_id: parsedTableId,
-      Order_Status: { $nin: ['Served', 'Cancelled'] },
+      Order_Status: { $nin: ['Served', 'Completed', 'Cancelled'] },
       Status: true
     }).sort({ CreateAt: -1 });
 

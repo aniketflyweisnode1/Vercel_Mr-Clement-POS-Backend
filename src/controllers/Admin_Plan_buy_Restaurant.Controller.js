@@ -1158,6 +1158,247 @@ const Plan_Heat_cityes = async (req, res) => {
   }
 };
 
+// Get Restaurant Subscription Purchased Details
+const getRestaurantSubscriptionPurchased = async (req, res) => {
+  try {
+    const { restaurant_id } = req.query;
+    const restaurantId = restaurant_id ? parseInt(restaurant_id) : req.user?.user_id;
+
+    if (!restaurantId || isNaN(restaurantId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid restaurant ID is required'
+      });
+    }
+
+    // Verify restaurant user exists
+    const restaurantUser = await User.findOne({ user_id: restaurantId });
+    if (!restaurantUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'Restaurant not found'
+      });
+    }
+
+    // Get all plan purchases for the restaurant (only successful payments)
+    const planPurchases = await Admin_Plan_buy_Restaurant.find({
+      CreateBy: restaurantId,
+      paymentStatus: true,
+      Status: true
+    }).sort({ CreateAt: 1 });
+
+    if (planPurchases.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'No subscription found for this restaurant',
+        data: {
+          restaurant_id: restaurantId,
+          CurrentPlan: null,
+          PuchasedDate: null,
+          RenewalDate: null,
+          FirstPurchaseOn: null,
+          NoofRenewals: 0
+        }
+      });
+    }
+
+    const firstPurchase = planPurchases[0];
+    const currentPurchase = planPurchases[planPurchases.length - 1];
+    const renewals = planPurchases.length - 1;
+
+    // Get current plan details
+    const currentPlan = await Admin_Plan.findOne({ Admin_Plan_id: currentPurchase.Admin_Plan_id });
+
+    // Get transaction for first purchase
+    let firstPurchaseDate = null;
+    if (firstPurchase.Trangection_id) {
+      const firstTransaction = await Transaction.findOne({ 
+        transagtion_id: firstPurchase.Trangection_id 
+      });
+      if (firstTransaction && firstTransaction.status === 'success') {
+        firstPurchaseDate = firstTransaction.transaction_date || firstPurchase.paymentSuccessDate || firstPurchase.CreateAt;
+      }
+    }
+    if (!firstPurchaseDate) {
+      firstPurchaseDate = firstPurchase.paymentSuccessDate || firstPurchase.CreateAt;
+    }
+
+    // Get transaction for current purchase
+    let currentPurchaseDate = null;
+    if (currentPurchase.Trangection_id) {
+      const currentTransaction = await Transaction.findOne({ 
+        transagtion_id: currentPurchase.Trangection_id 
+      });
+      if (currentTransaction && currentTransaction.status === 'success') {
+        currentPurchaseDate = currentTransaction.transaction_date || currentPurchase.paymentSuccessDate || currentPurchase.CreateAt;
+      }
+    }
+    if (!currentPurchaseDate) {
+      currentPurchaseDate = currentPurchase.paymentSuccessDate || currentPurchase.CreateAt;
+    }
+
+    const subscriptionData = {
+      restaurant_id: restaurantId,
+      CurrentPlan: currentPlan ? {
+        Admin_Plan_id: currentPlan.Admin_Plan_id,
+        PlanName: currentPlan.PlanName,
+        Description: currentPlan.Description,
+        Price: currentPlan.Price
+      } : null,
+      PuchasedDate: currentPurchaseDate,
+      RenewalDate: currentPurchase.expiry_date,
+      FirstPurchaseOn: firstPurchaseDate,
+      NoofRenewals: renewals
+    };
+
+    res.status(200).json({
+      success: true,
+      message: 'Restaurant subscription details retrieved successfully',
+      data: subscriptionData
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching restaurant subscription details',
+      error: error.message
+    });
+  }
+};
+
+// Send Renewal Email with Subscription Details
+const sendRenewalEmail = async (req, res) => {
+  try {
+    const { restaurant_id, email } = req.body;
+    const restaurantId = restaurant_id ? parseInt(restaurant_id) : req.user?.user_id;
+
+    if (!restaurantId || isNaN(restaurantId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid restaurant ID is required'
+      });
+    }
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required'
+      });
+    }
+
+    // Verify restaurant user exists
+    const restaurantUser = await User.findOne({ user_id: restaurantId });
+    if (!restaurantUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'Restaurant not found'
+      });
+    }
+
+    // Get all plan purchases for the restaurant (only successful payments)
+    const planPurchases = await Admin_Plan_buy_Restaurant.find({
+      CreateBy: restaurantId,
+      paymentStatus: true,
+      Status: true
+    }).sort({ CreateAt: 1 });
+
+    if (planPurchases.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No subscription found for this restaurant'
+      });
+    }
+
+    const firstPurchase = planPurchases[0];
+    const currentPurchase = planPurchases[planPurchases.length - 1];
+    const renewals = planPurchases.length - 1;
+
+    // Get current plan details
+    const currentPlan = await Admin_Plan.findOne({ Admin_Plan_id: currentPurchase.Admin_Plan_id });
+
+    // Get transaction for first purchase
+    let firstPurchaseDate = null;
+    if (firstPurchase.Trangection_id) {
+      const firstTransaction = await Transaction.findOne({ 
+        transagtion_id: firstPurchase.Trangection_id 
+      });
+      if (firstTransaction && firstTransaction.status === 'success') {
+        firstPurchaseDate = firstTransaction.transaction_date || firstPurchase.paymentSuccessDate || firstPurchase.CreateAt;
+      }
+    }
+    if (!firstPurchaseDate) {
+      firstPurchaseDate = firstPurchase.paymentSuccessDate || firstPurchase.CreateAt;
+    }
+
+    // Get transaction for current purchase
+    let currentPurchaseDate = null;
+    if (currentPurchase.Trangection_id) {
+      const currentTransaction = await Transaction.findOne({ 
+        transagtion_id: currentPurchase.Trangection_id 
+      });
+      if (currentTransaction && currentTransaction.status === 'success') {
+        currentPurchaseDate = currentTransaction.transaction_date || currentPurchase.paymentSuccessDate || currentPurchase.CreateAt;
+      }
+    }
+    if (!currentPurchaseDate) {
+      currentPurchaseDate = currentPurchase.paymentSuccessDate || currentPurchase.CreateAt;
+    }
+
+    // Prepare subscription details
+    const subscriptionDetails = {
+      CurrentPlan: currentPlan ? {
+        PlanName: currentPlan.PlanName,
+        Description: currentPlan.Description,
+        Price: currentPlan.Price
+      } : null,
+      PuchasedDate: currentPurchaseDate,
+      RenewalDate: currentPurchase.expiry_date,
+      FirstPurchaseOn: firstPurchaseDate,
+      NoofRenewals: renewals
+    };
+
+    // Format dates for email
+    const formatDate = (date) => {
+      if (!date) return 'N/A';
+      return new Date(date).toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      });
+    };
+
+    // Send renewal email
+    const emailService = require('../utils/emailService');
+    const emailResult = await emailService.sendRenewalEmail(
+      email,
+      restaurantUser.Name || 'Restaurant Owner',
+      subscriptionDetails
+    );
+
+    if (!emailResult.success) {
+      return res.status(500).json({
+        success: false,
+        message: 'Error sending renewal email',
+        error: emailResult.error
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Renewal email sent successfully',
+      data: {
+        email: email,
+        subscriptionDetails: subscriptionDetails
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error sending renewal email',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   createAdminPlanBuyRestaurant,
   updateAdminPlanBuyRestaurant,
@@ -1170,6 +1411,8 @@ module.exports = {
   TotalRenewPlanByauth,
   MatchPlanDay_and_IsAcitveExpirydate,
   getAllSubscription,
-  Plan_Heat_cityes
+  Plan_Heat_cityes,
+  getRestaurantSubscriptionPurchased,
+  sendRenewalEmail
 };
 

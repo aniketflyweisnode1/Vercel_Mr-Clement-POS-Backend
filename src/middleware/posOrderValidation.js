@@ -29,8 +29,8 @@ const validateCreatePosOrder = [
     .withMessage('Item variant ID must be a number'),
   body('items.*.item_status')
     .optional()
-    .isIn(['Preparing', 'Served', 'Cancelled'])
-    .withMessage('Item status must be one of: Preparing, Served, Cancelled'),
+    .isIn(['Preparing', 'Served', 'Cancelled', 'Completed'])
+    .withMessage('Item status must be one of: Preparing, Served, Cancelled, Completed'),
   body('items.*.item_size')
     .optional()
     .isString()
@@ -68,8 +68,8 @@ const validateCreatePosOrder = [
     .withMessage('Status must be a boolean value'),
   body('Order_Status')
     .optional()
-    .isIn(['Preparing', 'Served', 'Cancelled'])
-    .withMessage('Order status must be one of: Preparing, Served, Cancelled')
+    .isIn(['Preparing', 'Served', 'Cancelled', 'Completed'])
+    .withMessage('Order status must be one of: Preparing, Served, Cancelled, Completed')
 ];
 
 // Validation rules for updating POS order
@@ -103,8 +103,8 @@ const validateUpdatePosOrder = [
     .withMessage('Item variant ID must be a number'),
   body('items.*.item_status')
     .optional()
-    .isIn(['Preparing', 'Served', 'Cancelled'])
-    .withMessage('Item status must be one of: Preparing, Served, Cancelled'),
+    .isIn(['Preparing', 'Served', 'Cancelled', 'Completed'])
+    .withMessage('Item status must be one of: Preparing, Served, Cancelled, Completed'),
   body('items.*.item_size')
     .optional()
     .isString()
@@ -141,8 +141,8 @@ const validateUpdatePosOrder = [
     .withMessage('Status must be a boolean value'),
   body('Order_Status')
     .optional()
-    .isIn(['Preparing', 'Served', 'Cancelled'])
-    .withMessage('Order status must be one of: Preparing, Served, Cancelled')
+    .isIn(['Preparing', 'Served', 'Cancelled', 'Completed'])
+    .withMessage('Order status must be one of: Preparing, Served, Cancelled, Completed')
 ];
 
 const validateUpdatePosOrderStatus = [
@@ -154,8 +154,8 @@ const validateUpdatePosOrderStatus = [
   body('Order_Status')
     .notEmpty()
     .withMessage('Order status is required')
-    .isIn(['Preparing', 'Served', 'Cancelled'])
-    .withMessage('Order status must be one of: Preparing, Served, Cancelled')
+    .isIn(['Preparing', 'Served', 'Cancelled', 'Completed'])
+    .withMessage('Order status must be one of: Preparing, Served, Cancelled, Completed')
 ];
 
 const validateUpdatePosOrderItemStatus = [
@@ -171,8 +171,8 @@ const validateUpdatePosOrderItemStatus = [
     .withMessage('Item ID must be a number'),
   body('item_status')
     .optional()
-    .isIn(['Preparing', 'Served', 'Cancelled'])
-    .withMessage('Item status must be one of: Preparing, Served, Cancelled'),
+    .isIn(['Preparing', 'Served', 'Cancelled', 'Completed'])
+    .withMessage('Item status must be one of: Preparing, Served, Cancelled, Completed'),
   body('item_size')
     .optional()
     .isString()

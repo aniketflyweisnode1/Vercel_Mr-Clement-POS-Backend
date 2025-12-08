@@ -20,6 +20,7 @@ router.get('/getbyid/:id', auth, getPlanById);
 
 // Get all plans (with auth)
 router.get('/getall', getAllPlans);
+router.get('/getall', getAllPlans);
 
 // Get plan by auth (with auth)
 router.get('/getbyauth', auth, getPlanByAuth);

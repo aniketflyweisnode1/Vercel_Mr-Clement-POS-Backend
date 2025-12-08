@@ -2142,6 +2142,309 @@ const dashboard = async (req, res) => {
   }
 };
 
+// Get Restaurant Performance API
+const getRestaurantPerformance = async (req, res) => {
+  try {
+    // Get filter from query parameter (24H, 1 week, 1 Month, 6 Month)
+    const { filter = '24H' } = req.query;
+    
+    // Get restaurant ID from authenticated user
+    const restaurantId = req.user?.user_id;
+    
+    if (!restaurantId || isNaN(restaurantId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid restaurant ID is required'
+      });
+    }
+
+    // Verify restaurant user exists and has restaurant role
+    const restaurantUser = await User.findOne({ user_id: restaurantId });
+    
+    if (!restaurantUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'Restaurant not found'
+      });
+    }
+
+    const restaurantRole = await Role.findOne({ Role_id: restaurantUser.Role_id });
+    if (!restaurantRole || restaurantRole.role_name?.toLowerCase() !== 'restaurant') {
+      return res.status(400).json({
+        success: false,
+        message: 'Provided user is not associated with a restaurant role'
+      });
+    }
+
+    // Calculate date range based on filter
+    const now = new Date();
+    let dateRange = { start: now, end: now };
+    
+    switch (filter.toLowerCase()) {
+      case '24h':
+        dateRange.start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        break;
+      case '1 week':
+      case '1week':
+      case 'week':
+        dateRange.start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case '1 month':
+      case '1month':
+      case 'month':
+        dateRange.start = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+        break;
+      case '6 month':
+      case '6month':
+        dateRange.start = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
+        break;
+      default:
+        dateRange.start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    }
+    dateRange.end = now;
+
+    // Get all employees created by this restaurant
+    const employees = await User.find({ 
+      CreateBy: restaurantId, 
+      Status: true 
+    });
+    const employeeIds = employees.map(emp => emp.user_id);
+
+    // Get orders filtered by restaurant and date range
+    const posOrderQuery = { 
+      Restaurant_id: restaurantId,
+      Status: true,
+      CreateAt: { $gte: dateRange.start, $lt: dateRange.end }
+    };
+    
+    const quickOrderQuery = { 
+      Status: true,
+      CreateAt: { $gte: dateRange.start, $lt: dateRange.end }
+    };
+    
+    if (employeeIds.length > 0) {
+      quickOrderQuery['get_order_Employee_id'] = { $in: employeeIds };
+    } else {
+      quickOrderQuery['get_order_Employee_id'] = { $in: [-1] };
+    }
+
+    const [posOrders, quickOrders] = await Promise.all([
+      Pos_Point_sales_Order.find(posOrderQuery),
+      Quick_Order.find(quickOrderQuery)
+    ]);
+
+    // Calculate TotalSalesCount (total revenue)
+    const totalSalesCount = [...posOrders, ...quickOrders].reduce(
+      (sum, order) => sum + (order.Total || 0), 
+      0
+    );
+
+    // Calculate TotalOrdersCount
+    const totalOrdersCount = posOrders.length + quickOrders.length;
+
+    // Get TotalActiveClientsCount - filter clients created by restaurant or its employees
+    const clientCreators = [restaurantId, ...employeeIds];
+    const totalActiveClientsCount = await Clients.countDocuments({ 
+      CreateBy: { $in: clientCreators },
+      Status: true 
+    });
+
+    // Get customers - filter by restaurant employees
+    const customerFilter = { 
+      Status: true 
+    };
+    if (employeeIds.length > 0) {
+      customerFilter.CreateBy = { $in: employeeIds };
+    }
+    const allCustomers = await Customer.find(customerFilter);
+
+    // Calculate new customers (customers created in the date range)
+    const newCustomersCount = await Customer.countDocuments({
+      ...customerFilter,
+      CreateAt: { $gte: dateRange.start, $lt: dateRange.end }
+    });
+
+    // Calculate repeat customers (customers with more than 1 order)
+    const customerOrderCounts = {};
+    
+    // Count orders per customer from POS orders
+    posOrders.forEach(order => {
+      if (order.Customer_id) {
+        customerOrderCounts[order.Customer_id] = (customerOrderCounts[order.Customer_id] || 0) + 1;
+      }
+    });
+
+    // Count orders per customer from Quick orders by matching phone to Customer_id
+    quickOrders.forEach(order => {
+      if (order.client_mobile_no) {
+        const customer = allCustomers.find(c => c.phone === order.client_mobile_no);
+        if (customer) {
+          customerOrderCounts[customer.Customer_id] = (customerOrderCounts[customer.Customer_id] || 0) + 1;
+        }
+      }
+    });
+
+    // Count repeat customers (customers with more than 1 order)
+    const repeatCustomersCount = Object.values(customerOrderCounts).filter(count => count > 1).length;
+
+    // Calculate Average Order Value
+    const avgOrderValueCount = totalOrdersCount > 0 
+      ? parseFloat((totalSalesCount / totalOrdersCount).toFixed(2))
+      : 0;
+
+    // Generate Chart Data
+    const chart = generateChartData([...posOrders, ...quickOrders], filter, dateRange);
+
+    // Prepare response
+    const performanceData = {
+      TotalSalesCount: parseFloat(totalSalesCount.toFixed(2)),
+      TotalOrdersCount: totalOrdersCount,
+      TotalActiveClientsCount: totalActiveClientsCount,
+      NewCustomersCount: newCustomersCount,
+      RepeatCustomersCount: repeatCustomersCount,
+      AvgOrderValueCount: avgOrderValueCount,
+      Chart: chart,
+      filter: filter
+    };
+
+    res.status(200).json({
+      success: true,
+      message: 'Restaurant performance data retrieved successfully',
+      data: performanceData
+    });
+  } catch (error) {
+    console.error('Error fetching restaurant performance:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching restaurant performance data',
+      error: error.message
+    });
+  }
+};
+
+// Helper function to generate chart data
+const generateChartData = (orders, filter, dateRange) => {
+  const chart = [];
+  
+  if (orders.length === 0) {
+    return chart;
+  }
+
+  const filterLower = filter.toLowerCase();
+  
+  // Group orders by time period based on filter
+  if (filterLower === '24h') {
+    // Group by actual order time (format: HH.MM)
+    const hourlyData = {};
+    
+    orders.forEach(order => {
+      const orderDate = new Date(order.CreateAt);
+      const hour = orderDate.getHours();
+      const minutes = orderDate.getMinutes();
+      // Use actual minutes, format as HH.MM
+      const timeKey = `${String(hour).padStart(2, '0')}.${String(minutes).padStart(2, '0')}`;
+      
+      if (!hourlyData[timeKey]) {
+        hourlyData[timeKey] = 0;
+      }
+      hourlyData[timeKey] += (order.Total || 0);
+    });
+
+    // Sort time slots and add to chart (only show times with orders)
+    const sortedTimeSlots = Object.keys(hourlyData).sort();
+    
+    sortedTimeSlots.forEach(timeSlot => {
+      chart.push({
+        xof: `${parseFloat(hourlyData[timeSlot].toFixed(2))} xof`,
+        time: timeSlot
+      });
+    });
+  } else if (filterLower === '1 week' || filterLower === '1week' || filterLower === 'week') {
+    // Group by day
+    const dailyData = {};
+    
+    orders.forEach(order => {
+      const orderDate = new Date(order.CreateAt);
+      const dayKey = `${String(orderDate.getDate()).padStart(2, '0')}.${String(orderDate.getMonth() + 1).padStart(2, '0')}`;
+      
+      if (!dailyData[dayKey]) {
+        dailyData[dayKey] = 0;
+      }
+      dailyData[dayKey] += (order.Total || 0);
+    });
+
+    // Generate all days in the range (last 7 days)
+    const currentDate = new Date(dateRange.start);
+    const endDate = new Date(dateRange.end);
+    
+    while (currentDate <= endDate) {
+      const dayKey = `${String(currentDate.getDate()).padStart(2, '0')}.${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+      const sales = dailyData[dayKey] || 0;
+      chart.push({
+        xof: `${parseFloat(sales.toFixed(2))} xof`,
+        time: dayKey
+      });
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+  } else if (filterLower === '1 month' || filterLower === '1month' || filterLower === 'month') {
+    // Group by day
+    const dailyData = {};
+    
+    orders.forEach(order => {
+      const orderDate = new Date(order.CreateAt);
+      const dayKey = `${String(orderDate.getDate()).padStart(2, '0')}.${String(orderDate.getMonth() + 1).padStart(2, '0')}`;
+      
+      if (!dailyData[dayKey]) {
+        dailyData[dayKey] = 0;
+      }
+      dailyData[dayKey] += (order.Total || 0);
+    });
+
+    // Generate all days in the range
+    const currentDate = new Date(dateRange.start);
+    const endDate = new Date(dateRange.end);
+    
+    while (currentDate <= endDate) {
+      const dayKey = `${String(currentDate.getDate()).padStart(2, '0')}.${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+      const sales = dailyData[dayKey] || 0;
+      chart.push({
+        xof: `${parseFloat(sales.toFixed(2))} xof`,
+        time: dayKey
+      });
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+  } else if (filterLower === '6 month' || filterLower === '6month') {
+    // Group by month
+    const monthlyData = {};
+    
+    orders.forEach(order => {
+      const orderDate = new Date(order.CreateAt);
+      const monthKey = `${String(orderDate.getMonth() + 1).padStart(2, '0')}.${orderDate.getFullYear()}`;
+      
+      if (!monthlyData[monthKey]) {
+        monthlyData[monthKey] = 0;
+      }
+      monthlyData[monthKey] += (order.Total || 0);
+    });
+
+    // Generate all months in the range
+    const currentDate = new Date(dateRange.start);
+    const endDate = new Date(dateRange.end);
+    
+    while (currentDate <= endDate) {
+      const monthKey = `${String(currentDate.getMonth() + 1).padStart(2, '0')}.${currentDate.getFullYear()}`;
+      const sales = monthlyData[monthKey] || 0;
+      chart.push({
+        xof: `${parseFloat(sales.toFixed(2))} xof`,
+        time: monthKey
+      });
+      currentDate.setMonth(currentDate.getMonth() + 1);
+    }
+  }
+
+  return chart;
+};
+
 module.exports = {
   reportsToday,
   reportsMonth,
@@ -2154,5 +2457,6 @@ module.exports = {
   cityWiseUsageReport,
   employeePerformance,
   restaurantDashboard,
-  dashboard
+  dashboard,
+  getRestaurantPerformance
 };

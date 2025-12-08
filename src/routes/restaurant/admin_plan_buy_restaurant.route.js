@@ -13,7 +13,9 @@ const {
   TotalRenewPlanByauth,
   MatchPlanDay_and_IsAcitveExpirydate,
   getAllSubscription,
-  Plan_Heat_cityes
+  Plan_Heat_cityes,
+  getRestaurantSubscriptionPurchased,
+  sendRenewalEmail
 } = require('../../controllers/Admin_Plan_buy_Restaurant.Controller');
 
 // Create Admin Plan Buy Restaurant (with auth)
@@ -51,6 +53,12 @@ router.get('/getAllSubscription', auth, getAllSubscription);
 
 // Plan Heat Map by Cities (with auth)
 router.get('/Plan_Heat_cityes', auth, Plan_Heat_cityes);
+
+// Get Restaurant Subscription Purchased Details (with auth)
+router.get('/getRestaurantSubscriptionPurchased', auth, getRestaurantSubscriptionPurchased);
+
+// Send Renewal Email (with auth)
+router.post('/sendRenewalEmail', auth, sendRenewalEmail);
 
 module.exports = router;
 
