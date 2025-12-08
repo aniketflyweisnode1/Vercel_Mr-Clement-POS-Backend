@@ -450,17 +450,17 @@ const getFloorMapTableByAuth = async (req, res) => {
         const tableId = tableData.Table_id;
         const currentDate = new Date();
         
-        // Check for active Quick Orders
+        // Check for active Quick Orders (exclude Completed, Served, and Cancelled)
         const activeQuickOrder = await Quick_Order.findOne({
           Table_id: tableId,
-          Order_Status: { $ne: 'Cancelled' },
+          Order_Status: { $nin: ['Cancelled', 'Served', 'Completed'] },
           Status: true
         });
         
-        // Check for active POS Orders
+        // Check for active POS Orders (exclude Completed, Served, and Cancelled)
         const activePosOrder = await Pos_Point_sales_Order.findOne({
           Table_id: tableId,
-          Order_Status: { $ne: 'Cancelled' },
+          Order_Status: { $nin: ['Cancelled', 'Served', 'Completed'] },
           Status: true
         });
         
@@ -474,21 +474,28 @@ const getFloorMapTableByAuth = async (req, res) => {
           Date_time: { $gte: currentDate }
         });
         
-        // Determine table status
+        // Set table_status from Table-Booking-Status name
         let table_status = 'Available'; // Default status
         
+        // First, get status from Table-Booking-Status
+        if (tableBookingStatusData) {
+          table_status = tableBookingStatusData.Name || 'Available';
+        }
+        
+        // Override status if there are active orders (but not if order is Completed/Served/Cancelled)
         if (!tableData.Status) {
           table_status = 'Inactive';
         } else if (activeQuickOrder || activePosOrder) {
+          // Only set to Occupied if there's an active order (not completed)
           table_status = 'Occupied';
         } else if (activeReservation) {
           table_status = 'Reserved';
-        } else if (tableData['Table-Booking-Status_id'] && tableData['Table-Booking-Status_id'] !== 1) {
-          // If booking status is not 1 (Available), use the booking status name
-          table_status = tableBookingStatusData ? tableBookingStatusData.Name : 'Unavailable';
+        } else {
+          // If no active orders/reservations, use the Table-Booking-Status name
+          table_status = tableBookingStatusData ? tableBookingStatusData.Name : 'Available';
         }
         
-        // Add table_status to table object
+        // Add table_status to table object (from Table-Booking-Status)
         tableObj.table_status = table_status;
         tableObj.has_active_order = !!(activeQuickOrder || activePosOrder);
         tableObj.has_active_booking = !!activeReservation;
