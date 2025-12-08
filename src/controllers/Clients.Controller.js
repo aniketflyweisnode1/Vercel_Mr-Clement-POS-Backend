@@ -8,6 +8,7 @@ const Country = require('../models/Country.model');
 const State = require('../models/State.model');
 const City = require('../models/City.model');
 const Admin_Plan_buy_Restaurant = require('../models/Admin_Plan_buy_Restaurant.model');
+const Admin_Plan = require('../models/Admin_Plan.model');
 
 // Create Client
 const createClient = async (req, res) => {
@@ -415,6 +416,13 @@ const getAllClients = async (req, res) => {
     // If filter is 'all' or not specified, get all clients
     clients = await Clients.find(query).sort({ CreateAt: -1 });
 
+    // Calculate last year sales and orders
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+
+    const Pos_Point_sales_Order = require('../models/Pos_Point_sales_Order.model');
+    const Quick_Order = require('../models/Quick_Order.model');
+
     // Manually fetch related data for all clients
     const clientsResponse = await Promise.all(clients.map(async (client) => {
       const [createByUser, languages, currencies] = await Promise.all([
@@ -422,6 +430,64 @@ const getAllClients = async (req, res) => {
         client.language.length > 0 ? Language.find({ Language_id: { $in: client.language } }) : [],
         client.currency.length > 0 ? Currency.find({ currency_id: { $in: client.currency } }) : []
       ]);
+
+      // Get plan details
+      let PlanDetails = null;
+      if (client.CreateBy) {
+        const activePlan = await Admin_Plan_buy_Restaurant.findOne({
+          CreateBy: client.CreateBy,
+          paymentStatus: true,
+          isActive: true,
+          Status: true
+        }).sort({ expiry_date: -1 });
+
+        if (activePlan) {
+          const plan = await Admin_Plan.findOne({ Admin_Plan_id: activePlan.Admin_Plan_id });
+          PlanDetails = plan ? {
+            PlanName: plan.PlanName,
+            Description: plan.Description,
+            Price: plan.Price,
+            RenewalDate: activePlan.expiry_date
+          } : null;
+        }
+      }
+
+      // Calculate last year sales and orders
+      let lastYearSales = 0;
+      let TotalOrdersLastYear = 0;
+
+      if (client.CreateBy) {
+        const restaurantId = client.CreateBy;
+        
+        // Get POS orders
+        const posOrders = await Pos_Point_sales_Order.find({
+          Restaurant_id: restaurantId,
+          CreateAt: { $gte: oneYearAgo, $lt: now },
+          Status: true
+        });
+
+        // Get employees
+        const employees = await User.find({
+          CreateBy: restaurantId,
+          Status: true
+        });
+        const employeeIds = employees.map(e => e.user_id);
+
+        // Get Quick orders
+        const quickOrders = employeeIds.length > 0
+          ? await Quick_Order.find({
+              get_order_Employee_id: { $in: employeeIds },
+              CreateAt: { $gte: oneYearAgo, $lt: now },
+              Status: true
+            })
+          : [];
+
+        lastYearSales = [...posOrders, ...quickOrders].reduce(
+          (sum, order) => sum + (order.Total || 0),
+          0
+        );
+        TotalOrdersLastYear = posOrders.length + quickOrders.length;
+      }
 
       const clientObj = client.toObject();
       clientObj.CreateBy = createByUser ? 
@@ -435,6 +501,9 @@ const getAllClients = async (req, res) => {
         name: curr.name,
         icon: curr.icon
       }));
+      clientObj.PlanDetails = PlanDetails;
+      clientObj.lastYearSales = parseFloat(lastYearSales.toFixed(2));
+      clientObj.TotalOrdersLastYear = TotalOrdersLastYear;
 
       // Remove password from response
       delete clientObj.password;

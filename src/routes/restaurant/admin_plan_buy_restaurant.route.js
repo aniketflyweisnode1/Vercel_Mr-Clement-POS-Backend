@@ -15,7 +15,11 @@ const {
   getAllSubscription,
   Plan_Heat_cityes,
   getRestaurantSubscriptionPurchased,
-  sendRenewalEmail
+  sendRenewalEmail,
+  RestaurantSubscriptionRenewalAlert,
+  RestaurantSubscriptionList,
+  TopRestaurantPerformer,
+  RestaurantBillHistory
 } = require('../../controllers/Admin_Plan_buy_Restaurant.Controller');
 
 // Create Admin Plan Buy Restaurant (with auth)
@@ -59,6 +63,18 @@ router.get('/getRestaurantSubscriptionPurchased', auth, getRestaurantSubscriptio
 
 // Send Renewal Email (with auth)
 router.post('/sendRenewalEmail', auth, sendRenewalEmail);
+
+// Restaurant Subscription Renewal Alert (with auth)
+router.get('/RestaurantSubscriptionRenewalAlert', auth, RestaurantSubscriptionRenewalAlert);
+
+// Restaurant Subscription List with City Chart (with auth)
+router.get('/RestaurantSubscriptionList', auth, RestaurantSubscriptionList);
+
+// Top Restaurant Performer (with auth)
+router.get('/TopRestaurantPerformer', auth, TopRestaurantPerformer);
+
+// Restaurant Bill History (with auth)
+router.get('/RestaurantBillHistory', auth, RestaurantBillHistory);
 
 module.exports = router;
 

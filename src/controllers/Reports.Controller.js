@@ -15,6 +15,7 @@ const Reservations = require('../models/Reservations.model');
 const Table = require('../models/Table.model');
 const Employee_Feedback = require('../models/Employee_Feedback.model');
 const Currency = require('../models/currency.model');
+const Transaction = require('../models/Transaction.model');
 
 // Helper function to get date range based on period
 const getDateRange = (period) => {
@@ -2445,6 +2446,243 @@ const generateChartData = (orders, filter, dateRange) => {
   return chart;
 };
 
+// ReportsStats API - Comprehensive statistics
+const ReportsStats = async (req, res) => {
+  try {
+    const now = new Date();
+    const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+
+    // Get all orders (POS and Quick)
+    const [allPosOrders, allQuickOrders] = await Promise.all([
+      Pos_Point_sales_Order.find({ Status: true }),
+      Quick_Order.find({ Status: true })
+    ]);
+
+    // Calculate TotalRevenueCount (all time)
+    const TotalRevenueCount = [...allPosOrders, ...allQuickOrders].reduce(
+      (sum, order) => sum + (order.Total || 0),
+      0
+    );
+
+    // Calculate MonthlyRecurringCount (active subscriptions this month)
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthlyRecurringPlans = await Admin_Plan_buy_Restaurant.find({
+      paymentStatus: true,
+      isActive: true,
+      Status: true,
+      expiry_date: { $gte: currentMonthStart }
+    });
+    const MonthyRecurringCount = monthlyRecurringPlans.length;
+
+    // Get restaurant role
+    const restaurantRole = await Role.findOne({ 
+      role_name: { $regex: /^restaurant$/i } 
+    });
+    
+    // Calculate TotalPosClientsRestaurant
+    const restaurantUsers = restaurantRole ? await User.find({
+      Role_id: restaurantRole.Role_id,
+      Status: true
+    }) : [];
+    const TotalPosClientsRestaurant = restaurantUsers.length;
+
+    // WeekingActivityChartbyDay - Last 7 days
+    const WeekingAcitvityChartbyDay = [];
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(now);
+      date.setDate(date.getDate() - i);
+      const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const dayEnd = new Date(dayStart);
+      dayEnd.setDate(dayStart.getDate() + 1);
+
+      // New clients created on this day
+      const newClients = await Clients.countDocuments({
+        CreateAt: { $gte: dayStart, $lt: dayEnd },
+        Status: true
+      });
+
+      // Client renewals (plan purchases) on this day
+      const clientRenewals = await Admin_Plan_buy_Restaurant.countDocuments({
+        CreateAt: { $gte: dayStart, $lt: dayEnd },
+        paymentStatus: true,
+        Status: true
+      });
+
+      WeekingAcitvityChartbyDay.push({
+        NewclientCount: newClients,
+        CleintsRenewalsCount: clientRenewals
+      });
+    }
+
+    // MonthlyGrowthChartByMonth - Last 12 months
+    const MonthlyGrowthChartByMonth = [];
+    for (let i = 11; i >= 0; i--) {
+      const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+
+      const newClients = await Clients.countDocuments({
+        CreateAt: { $gte: monthDate, $lt: monthEnd },
+        Status: true
+      });
+
+      const clientRenewals = await Admin_Plan_buy_Restaurant.countDocuments({
+        CreateAt: { $gte: monthDate, $lt: monthEnd },
+        paymentStatus: true,
+        Status: true
+      });
+
+      MonthlyGrowthChartByMonth.push({
+        NewclientCount: newClients,
+        CleintsRenewalsCount: clientRenewals
+      });
+    }
+
+    // ProfitAfterTax - Calculate from transactions
+    const allTransactions = await Transaction.find({
+      status: 'success',
+      Status: true
+    });
+
+    // Calculate profit (revenue - costs, simplified as revenue for now)
+    // In a real scenario, you'd subtract costs, but we'll use revenue as profit
+    const ProfitAfterTax = allTransactions.map(transaction => ({
+      NetProfit: transaction.amount || 0
+    }));
+
+    // TopPerformersList - Top restaurants by sales
+    const restaurantSales = {};
+    
+    for (const restaurant of restaurantUsers) {
+      const restaurantId = restaurant.user_id;
+      const posOrders = allPosOrders.filter(o => o.Restaurant_id === restaurantId);
+      
+      // Get employees created by this restaurant
+      const employees = await User.find({
+        CreateBy: restaurantId,
+        Status: true
+      });
+      const employeeIds = employees.map(e => e.user_id);
+      
+      const quickOrders = employeeIds.length > 0
+        ? allQuickOrders.filter(o => employeeIds.includes(o.get_order_Employee_id))
+        : [];
+      
+      const totalSales = [...posOrders, ...quickOrders].reduce(
+        (sum, order) => sum + (order.Total || 0),
+        0
+      );
+      
+      if (totalSales > 0) {
+        restaurantSales[restaurantId] = {
+          restaurant,
+          totalSales
+        };
+      }
+    }
+
+    // Get renewal dates for top performers
+    const topPerformersList = await Promise.all(
+      Object.entries(restaurantSales)
+        .sort((a, b) => b[1].totalSales - a[1].totalSales)
+        .slice(0, 10)
+        .map(async ([restaurantId, data]) => {
+          const activePlan = await Admin_Plan_buy_Restaurant.findOne({
+            CreateBy: parseInt(restaurantId),
+            paymentStatus: true,
+            isActive: true,
+            Status: true
+          }).sort({ expiry_date: -1 });
+
+          return {
+            CompnayName: data.restaurant.Name || 'Unknown',
+            TotalSales: parseFloat(data.totalSales.toFixed(2)),
+            RenewalDate: activePlan?.expiry_date || null
+          };
+        })
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Reports stats retrieved successfully',
+      data: {
+        TotalRevenueCount: parseFloat(TotalRevenueCount.toFixed(2)),
+        MonthyRecurringCount,
+        TotalPosClientsRestaurant,
+        WeekingAcitvityChartbyDay,
+        MonthlyGrowthChartByMonth,
+        ProfitAfterTax,
+        TopPerformersList: topPerformersList
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching reports stats',
+      error: error.message
+    });
+  }
+};
+
+// Restaurant By Chart By City
+const RestaurantByChartByCity = async (req, res) => {
+  try {
+    const restaurantRole = await Role.findOne({ 
+      role_name: { $regex: /^restaurant$/i } 
+    });
+
+    if (!restaurantRole) {
+      return res.status(404).json({
+        success: false,
+        message: 'Restaurant role not found'
+      });
+    }
+
+    const restaurantUsers = await User.find({
+      Role_id: restaurantRole.Role_id,
+      Status: true
+    });
+
+    // Group restaurants by city
+    const cityCounts = {};
+    restaurantUsers.forEach(restaurant => {
+      if (restaurant.City_id) {
+        cityCounts[restaurant.City_id] = (cityCounts[restaurant.City_id] || 0) + 1;
+      }
+    });
+
+    // Get city details
+    const cityIds = Object.keys(cityCounts).map(id => parseInt(id));
+    const cities = await City.find({
+      City_id: { $in: cityIds },
+      Status: true
+    });
+
+    const cityMap = cities.reduce((map, city) => {
+      map[city.City_id] = city;
+      return map;
+    }, {});
+
+    const chart = Object.entries(cityCounts).map(([cityId, count]) => ({
+      City: cityMap[parseInt(cityId)] ? cityMap[parseInt(cityId)].City_name : 'Unknown',
+      RestaurantCount: count
+    })).sort((a, b) => b.RestaurantCount - a.RestaurantCount);
+
+    res.status(200).json({
+      success: true,
+      message: 'Restaurant chart by city retrieved successfully',
+      data: {
+        chart
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching restaurant chart by city',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   reportsToday,
   reportsMonth,
@@ -2458,5 +2696,7 @@ module.exports = {
   employeePerformance,
   restaurantDashboard,
   dashboard,
-  getRestaurantPerformance
+  getRestaurantPerformance,
+  ReportsStats,
+  RestaurantByChartByCity
 };

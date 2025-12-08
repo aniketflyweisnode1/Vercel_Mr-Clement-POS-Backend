@@ -245,10 +245,38 @@ const getAuditByAuth = async (req, res) => {
   }
 };
 
+// Get Audit Logs
+const getAuditLogs = async (req, res) => {
+  try {
+    const audits = await Audits.find({ Status: true }).sort({ CreateAt: -1 });
+
+    const auditLogs = audits.map(audit => ({
+      aciton: audit.Reservations || audit.file || audit.ChineseRamen || 'Unknown',
+      Environment: audit.environment,
+      timestamp: audit.CreateAt,
+      ipAddress: audit.ipAddress
+    }));
+
+    res.status(200).json({
+      success: true,
+      message: 'Audit logs retrieved successfully',
+      count: auditLogs.length,
+      data: auditLogs
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching audit logs',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   createAudit,
   updateAudit,
   getAuditById,
   getAllAudits,
+  getAuditLogs,
   getAuditByAuth
 };

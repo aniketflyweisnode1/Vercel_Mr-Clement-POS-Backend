@@ -7,7 +7,8 @@ const {
   getPlanMapClientById,
   getAllPlanMapClients,
   getPlanMapClientByAuth,
-  getSubscriptionsList
+  getSubscriptionsList,
+  updatePlanPlanmapClientMessage
 } = require('../../controllers/Plan_map_Client.Controller');
 
 // Create plan map client (with auth)
@@ -28,6 +29,7 @@ router.get('/getbyauth', auth, getPlanMapClientByAuth);
 // Get subscriptions list with date filter (with auth)
 router.get('/getSubscriptionsList', auth, getSubscriptionsList);
 
-
+// Update Plan Planmap Client Message (with auth)
+router.put('/updatePlanPlanmapClientMessage', auth, updatePlanPlanmapClientMessage);
 
 module.exports = router;

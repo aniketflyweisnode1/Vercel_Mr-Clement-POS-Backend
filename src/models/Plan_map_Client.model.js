@@ -65,6 +65,18 @@ const planMapClientSchema = new mongoose.Schema({
   UpdatedAt: {
     type: Date,
     default: Date.now
+  },
+  Two_Weeks_ago: {
+    type: Boolean,
+    default: false
+  },
+  one_Weeks_ago: {
+    type: Boolean,
+    default: false
+  },
+  One_Day_ago: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: false,

@@ -2101,6 +2101,65 @@ const getEmployeesByRoleId = async (req, res) => {
   }
 };
 
+// Change Password Restaurant By Admin
+const changePasswordRestaurantByAdmin = async (req, res) => {
+  try {
+    const { User_id, CurrentPassword, NewPassword } = req.body;
+    const adminUserId = req.user.user_id;
+
+    if (!User_id || !CurrentPassword || !NewPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'User_id, CurrentPassword, and NewPassword are required'
+      });
+    }
+
+    // Verify user exists and is a restaurant
+    const user = await User.findOne({ user_id: parseInt(User_id) });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Verify current password
+    const isCurrentPasswordValid = user.comparePassword(CurrentPassword);
+    if (!isCurrentPasswordValid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Current password is incorrect'
+      });
+    }
+
+    // Hash the new password
+    const timestamp = Date.now().toString();
+    const simpleHash = NewPassword + timestamp;
+    const hashedPassword = timestamp + ':' + simpleHash;
+
+    // Update password
+    await User.updateOne(
+      { user_id: parseInt(User_id) },
+      {
+        password: hashedPassword,
+        UpdatedBy: adminUserId,
+        UpdatedAt: new Date()
+      }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Password changed successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error changing password',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   createUser,
   updateUser,
@@ -2117,5 +2176,6 @@ module.exports = {
   getUsersByRoleId,
   getEmployeesByRoleId,
   logout,
-  createEmployee
+  createEmployee,
+  changePasswordRestaurantByAdmin
 };

@@ -13,7 +13,8 @@ const {
   getEmployeeDetailsById,
   getUsersByRoleId,
   logout,
-  createEmployee
+  createEmployee,
+  changePasswordRestaurantByAdmin
 } = require('../../controllers/User.Controller.js');
 const {
   loginUser,
@@ -88,6 +89,9 @@ router.put('/change-password', auth, validateChangePassword, handleValidationErr
 // Forget Password routes 29/08/2025
 router.post('/forget-password/send-otp', validateSendOTP, handleValidationErrors, sendForgetPasswordOTPController);
 router.post('/forget-password/verify-otp', validateVerifyOTP, handleValidationErrors, verifyOTP);
+
+// Change Password Restaurant By Admin (with auth)
+router.put('/changePasswordRestaurantByAdmin', auth, changePasswordRestaurantByAdmin);
 
 // JSON File routes
 // router.use('/json-files', jsonFileRoutes);

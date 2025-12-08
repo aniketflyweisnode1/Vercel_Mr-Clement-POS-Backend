@@ -6,6 +6,7 @@ const {
   updateAudit,
   getAuditById,
   getAllAudits,
+  getAuditLogs,
   getAuditByAuth
 } = require('../../controllers/Audits.Controller');
 
@@ -23,5 +24,8 @@ router.get('/getall', auth, getAllAudits);
 
 // Get audit by auth (with auth)
 router.get('/getbyauth', auth, getAuditByAuth);
+
+// Get audit logs (with auth)
+router.get('/getAuditLogs', auth, getAuditLogs);
 
 module.exports = router;

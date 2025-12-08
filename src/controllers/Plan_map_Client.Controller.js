@@ -715,11 +715,56 @@ const getSubscriptionsList = async (req, res) => {
   }
 };
 
+// Update Plan Planmap Client Message
+const updatePlanPlanmapClientMessage = async (req, res) => {
+  try {
+    const { id, Two_Weeks_ago, one_Weeks_ago, One_Day_ago } = req.body;
+    const userId = req.user.user_id;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Plan Map Client ID is required'
+      });
+    }
+
+    const planMapClient = await Plan_map_Client.findOne({ Plan_map_Client_id: parseInt(id) });
+    if (!planMapClient) {
+      return res.status(404).json({
+        success: false,
+        message: 'Plan map client not found'
+      });
+    }
+
+    if (Two_Weeks_ago !== undefined) planMapClient.Two_Weeks_ago = Two_Weeks_ago;
+    if (one_Weeks_ago !== undefined) planMapClient.one_Weeks_ago = one_Weeks_ago;
+    if (One_Day_ago !== undefined) planMapClient.One_Day_ago = One_Day_ago;
+
+    planMapClient.UpdatedBy = userId;
+    planMapClient.UpdatedAt = new Date();
+
+    const updated = await planMapClient.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Plan map client message updated successfully',
+      data: updated
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error updating plan map client message',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   createPlanMapClient,
   updatePlanMapClient,
   getPlanMapClientById,
   getAllPlanMapClients,
   getPlanMapClientByAuth,
-  getSubscriptionsList
+  getSubscriptionsList,
+  updatePlanPlanmapClientMessage
 };

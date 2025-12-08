@@ -4,6 +4,7 @@ const User = require('../models/User.model');
 const Transaction = require('../models/Transaction.model');
 const City = require('../models/City.model');
 const Role = require('../models/Role.model');
+const Clients = require('../models/Clients.model');
 const Responsibility = require('../models/Responsibility.model');
 const Language = require('../models/Language.model');
 const Currency = require('../models/currency.model');
@@ -1399,6 +1400,278 @@ const sendRenewalEmail = async (req, res) => {
   }
 };
 
+// Restaurant Subscription Renewal Alert
+const RestaurantSubscriptionRenewalAlert = async (req, res) => {
+  try {
+    const now = new Date();
+    // Get subscriptions expiring in next 30 days
+    const thirtyDaysFromNow = new Date(now);
+    thirtyDaysFromNow.setDate(now.getDate() + 30);
+
+    const expiringSubscriptions = await Admin_Plan_buy_Restaurant.find({
+      paymentStatus: true,
+      isActive: true,
+      Status: true,
+      expiry_date: { $gte: now, $lte: thirtyDaysFromNow }
+    }).sort({ expiry_date: 1 });
+
+    const list = await Promise.all(
+      expiringSubscriptions.map(async (subscription) => {
+        const restaurant = await User.findOne({ user_id: subscription.CreateBy });
+        return {
+          Restaurant_id: subscription.CreateBy,
+          BusinessName: restaurant ? restaurant.Name : 'Unknown',
+          RenewalDate: subscription.expiry_date
+        };
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Restaurant subscription renewal alerts retrieved successfully',
+      count: list.length,
+      data: { list }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching subscription renewal alerts',
+      error: error.message
+    });
+  }
+};
+
+// Restaurant Subscription List with City Chart
+const RestaurantSubscriptionList = async (req, res) => {
+  try {
+    const subscriptions = await Admin_Plan_buy_Restaurant.find({
+      paymentStatus: true,
+      Status: true
+    }).sort({ CreateAt: -1 });
+
+    const userIds = [...new Set(subscriptions.map(s => s.CreateBy))];
+    const restaurants = await User.find({
+      user_id: { $in: userIds },
+      Status: true
+    });
+
+    // Group by city
+    const cityCounts = {};
+    const citySubscriptions = {};
+
+    restaurants.forEach(restaurant => {
+      if (restaurant.City_id) {
+        if (!cityCounts[restaurant.City_id]) {
+          cityCounts[restaurant.City_id] = 0;
+          citySubscriptions[restaurant.City_id] = [];
+        }
+        cityCounts[restaurant.City_id]++;
+        const restaurantSubs = subscriptions.filter(s => s.CreateBy === restaurant.user_id);
+        citySubscriptions[restaurant.City_id].push(...restaurantSubs);
+      }
+    });
+
+    const cityIds = Object.keys(cityCounts).map(id => parseInt(id));
+    const cities = await City.find({ City_id: { $in: cityIds }, Status: true });
+    const cityMap = cities.reduce((map, city) => {
+      map[city.City_id] = city;
+      return map;
+    }, {});
+
+    const totalSubscriptions = subscriptions.length;
+    const chart = Object.entries(cityCounts).map(([cityId, count]) => {
+      const city = cityMap[parseInt(cityId)];
+      const percentage = totalSubscriptions > 0 
+        ? parseFloat(((count / totalSubscriptions) * 100).toFixed(2))
+        : 0;
+      return {
+        City: city ? city.City_name : 'Unknown',
+        RestaurantCount: count,
+        Percentage: percentage
+      };
+    }).sort((a, b) => b.RestaurantCount - a.RestaurantCount);
+
+    res.status(200).json({
+      success: true,
+      message: 'Restaurant subscription list with city chart retrieved successfully',
+      data: {
+        chart,
+        totalSubscriptions
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching restaurant subscription list',
+      error: error.message
+    });
+  }
+};
+
+// Top Restaurant Performer
+const TopRestaurantPerformer = async (req, res) => {
+  try {
+    const restaurantRole = await Role.findOne({ 
+      role_name: { $regex: /^restaurant$/i } 
+    });
+
+    if (!restaurantRole) {
+      return res.status(404).json({
+        success: false,
+        message: 'Restaurant role not found'
+      });
+    }
+
+    const restaurantUsers = await User.find({
+      Role_id: restaurantRole.Role_id,
+      Status: true
+    });
+
+    const Pos_Point_sales_Order = require('../models/Pos_Point_sales_Order.model');
+    const Quick_Order = require('../models/Quick_Order.model');
+
+    const performers = await Promise.all(
+      restaurantUsers.map(async (restaurant) => {
+        const restaurantId = restaurant.user_id;
+        
+        // Get POS orders
+        const posOrders = await Pos_Point_sales_Order.find({
+          Restaurant_id: restaurantId,
+          Status: true
+        });
+
+        // Get employees
+        const employees = await User.find({
+          CreateBy: restaurantId,
+          Status: true
+        });
+        const employeeIds = employees.map(e => e.user_id);
+
+        // Get Quick orders
+        const quickOrders = employeeIds.length > 0 
+          ? await Quick_Order.find({
+              get_order_Employee_id: { $in: employeeIds },
+              Status: true
+            })
+          : [];
+
+        const totalSales = [...posOrders, ...quickOrders].reduce(
+          (sum, order) => sum + (order.Total || 0),
+          0
+        );
+
+        // Get renewal date
+        const activePlan = await Admin_Plan_buy_Restaurant.findOne({
+          CreateBy: restaurantId,
+          paymentStatus: true,
+          isActive: true,
+          Status: true
+        }).sort({ expiry_date: -1 });
+
+        return {
+          Restaurant_id: restaurantId,
+          CompanyName: restaurant.Name || 'Unknown',
+          TotalSales: parseFloat(totalSales.toFixed(2)),
+          RenewalDate: activePlan?.expiry_date || null
+        };
+      })
+    );
+
+    // Sort by TotalSales descending and return top 10
+    const topPerformers = performers
+      .filter(p => p.TotalSales > 0)
+      .sort((a, b) => b.TotalSales - a.TotalSales)
+      .slice(0, 10);
+
+    res.status(200).json({
+      success: true,
+      message: 'Top restaurant performers retrieved successfully',
+      count: topPerformers.length,
+      data: topPerformers
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching top restaurant performers',
+      error: error.message
+    });
+  }
+};
+
+// Restaurant Bill History
+const RestaurantBillHistory = async (req, res) => {
+  try {
+    const { restaurant_id } = req.query;
+    const restaurantId = restaurant_id ? parseInt(restaurant_id) : req.user?.user_id;
+
+    if (!restaurantId || isNaN(restaurantId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid restaurant ID is required'
+      });
+    }
+
+    const restaurant = await User.findOne({ user_id: restaurantId });
+    if (!restaurant) {
+      return res.status(404).json({
+        success: false,
+        message: 'Restaurant not found'
+      });
+    }
+
+    const client = await Clients.findOne({ CreateBy: restaurantId });
+    const BusinessName = client ? client.Business_Name : restaurant.Name;
+
+    // Get all plan purchases for this restaurant
+    const planPurchases = await Admin_Plan_buy_Restaurant.find({
+      CreateBy: restaurantId,
+      paymentStatus: true,
+      Status: true
+    }).sort({ CreateAt: -1 });
+
+    const DetialsBills = await Promise.all(
+      planPurchases.map(async (planBuy) => {
+        const [plan, transaction] = await Promise.all([
+          Admin_Plan.findOne({ Admin_Plan_id: planBuy.Admin_Plan_id }),
+          planBuy.Trangection_id ? Transaction.findOne({ transagtion_id: planBuy.Trangection_id }) : null
+        ]);
+
+        return {
+          PlanPurchased: plan ? plan.PlanName : null,
+          RenewalDate: planBuy.expiry_date,
+          Transaction_id: planBuy.Trangection_id,
+          Amount: transaction ? transaction.amount : null,
+          PaymentDate: planBuy.paymentSuccessDate || planBuy.CreateAt,
+          Status: planBuy.isActive ? 'Active' : 'Inactive'
+        };
+      })
+    );
+
+    // Get current active plan
+    const activePlan = planPurchases.find(p => p.isActive && p.expiry_date > new Date());
+    const currentPlan = activePlan ? await Admin_Plan.findOne({ Admin_Plan_id: activePlan.Admin_Plan_id }) : null;
+
+    res.status(200).json({
+      success: true,
+      message: 'Restaurant bill history retrieved successfully',
+      data: {
+        Restaurant_id: restaurantId,
+        BusinessName,
+        PlanPurchased: currentPlan ? currentPlan.PlanName : null,
+        RenewalDate: activePlan?.expiry_date || null,
+        Transaction_id: activePlan?.Trangection_id || null,
+        DetialsBills
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching restaurant bill history',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   createAdminPlanBuyRestaurant,
   updateAdminPlanBuyRestaurant,
@@ -1413,6 +1686,10 @@ module.exports = {
   getAllSubscription,
   Plan_Heat_cityes,
   getRestaurantSubscriptionPurchased,
-  sendRenewalEmail
+  sendRenewalEmail,
+  RestaurantSubscriptionRenewalAlert,
+  RestaurantSubscriptionList,
+  TopRestaurantPerformer,
+  RestaurantBillHistory
 };
 

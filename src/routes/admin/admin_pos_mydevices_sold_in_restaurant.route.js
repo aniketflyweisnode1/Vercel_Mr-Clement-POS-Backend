@@ -8,7 +8,8 @@ const {
   getAllAdminPOSMyDevicesSoldInRestaurant,
   getAdminPOSMyDevicesSoldInRestaurantByAuth,
   deleteAdminPOSMyDevicesSoldInRestaurant,
-  getPOSHardwareDevices_Dashboard
+  getPOSHardwareDevices_Dashboard,
+  PosDeviceSection
 } = require('../../controllers/Admin_POS_MyDevices_sold_in_restaurant.Controller');
 
 // Create Admin POS MyDevices Sold in Restaurant (with auth)
@@ -31,6 +32,9 @@ router.delete('/delete/:id', auth, deleteAdminPOSMyDevicesSoldInRestaurant);
 
 // Get POS Hardware Devices Dashboard (with auth)
 router.get('/POSHardwareDevices_Dashboard', auth, getPOSHardwareDevices_Dashboard);
+
+// PosDeviceSection API (with auth)
+router.get('/PosDeviceSection', auth, PosDeviceSection);
 
 module.exports = router;
 

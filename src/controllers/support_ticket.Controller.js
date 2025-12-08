@@ -244,115 +244,115 @@ const getSupportTicketByAuth = async (req, res) => {
 // Get Tickets Chart
 const getTicketsChart = async (req, res) => {
   try {
-    const { period = 'monthly' } = req.query; // monthly, quarterly, halfYear, year
+    const { filter = '1Month' } = req.query; // 1Day, 1Month, 3Month, 4Month, 1Year
     const now = new Date();
-    let dataPoints = [];
-    let previousPeriodCount = 0;
-
     let dateRanges = [];
-    let previousStart = null;
-    let previousEnd = null;
 
-    switch (period) {
-      case 'monthly':
-        // 30/31 data points (one per day for current month)
-        const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-        for (let i = 0; i < daysInMonth; i++) {
-          const dayStart = new Date(now.getFullYear(), now.getMonth(), i + 1);
-          const dayEnd = new Date(now.getFullYear(), now.getMonth(), i + 2);
-          dateRanges.push({ start: dayStart, end: dayEnd, label: `${i + 1}` });
+    switch (filter) {
+      case '1Day':
+        // Last 24 hours - hourly data
+        for (let i = 23; i >= 0; i--) {
+          const hourStart = new Date(now);
+          hourStart.setHours(now.getHours() - i, 0, 0, 0);
+          const hourEnd = new Date(hourStart);
+          hourEnd.setHours(hourStart.getHours() + 1);
+          dateRanges.push({ 
+            start: hourStart, 
+            end: hourEnd, 
+            label: `${String(hourStart.getHours()).padStart(2, '0')}:00` 
+          });
         }
-        // Previous month for comparison
-        previousStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        previousEnd = new Date(now.getFullYear(), now.getMonth(), 1);
         break;
 
-      case 'quarterly':
-        // 12 data points (one per week for 3 months)
-        const quarterStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
-        for (let i = 0; i < 12; i++) {
-          const weekStart = new Date(quarterStart);
-          weekStart.setDate(quarterStart.getDate() + (i * 7));
+      case '1Month':
+        // Last 30 days - daily data
+        for (let i = 29; i >= 0; i--) {
+          const dayStart = new Date(now);
+          dayStart.setDate(now.getDate() - i);
+          dayStart.setHours(0, 0, 0, 0);
+          const dayEnd = new Date(dayStart);
+          dayEnd.setDate(dayStart.getDate() + 1);
+          dateRanges.push({ 
+            start: dayStart, 
+            end: dayEnd, 
+            label: `${String(dayStart.getDate()).padStart(2, '0')}.${String(dayStart.getMonth() + 1).padStart(2, '0')}` 
+          });
+        }
+        break;
+
+      case '3Month':
+        // Last 3 months - weekly data
+        for (let i = 11; i >= 0; i--) {
+          const weekStart = new Date(now);
+          weekStart.setDate(now.getDate() - (i * 7));
+          weekStart.setHours(0, 0, 0, 0);
           const weekEnd = new Date(weekStart);
           weekEnd.setDate(weekStart.getDate() + 7);
-          dateRanges.push({ start: weekStart, end: weekEnd, label: `Week ${i + 1}` });
+          dateRanges.push({ 
+            start: weekStart, 
+            end: weekEnd, 
+            label: `Week ${12 - i}` 
+          });
         }
-        // Previous quarter
-        previousStart = new Date(now.getFullYear(), now.getMonth() - 5, 1);
-        previousEnd = new Date(now.getFullYear(), now.getMonth() - 2, 1);
         break;
 
-      case 'halfYear':
-        // 24 data points (one per week for 6 months)
-        const halfYearStart = new Date(now.getFullYear(), now.getMonth() - 5, 1);
-        for (let i = 0; i < 24; i++) {
-          const weekStart = new Date(halfYearStart);
-          weekStart.setDate(halfYearStart.getDate() + (i * 7));
+      case '4Month':
+        // Last 4 months - weekly data
+        for (let i = 15; i >= 0; i--) {
+          const weekStart = new Date(now);
+          weekStart.setDate(now.getDate() - (i * 7));
+          weekStart.setHours(0, 0, 0, 0);
           const weekEnd = new Date(weekStart);
           weekEnd.setDate(weekStart.getDate() + 7);
-          dateRanges.push({ start: weekStart, end: weekEnd, label: `Week ${i + 1}` });
+          dateRanges.push({ 
+            start: weekStart, 
+            end: weekEnd, 
+            label: `Week ${16 - i}` 
+          });
         }
-        // Previous half year
-        previousStart = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-        previousEnd = new Date(now.getFullYear(), now.getMonth() - 5, 1);
         break;
 
-      case 'year':
-        // 12 data points (one per month)
-        for (let i = 0; i < 12; i++) {
-          const monthStart = new Date(now.getFullYear(), now.getMonth() - (11 - i), 1);
-          const monthEnd = new Date(now.getFullYear(), now.getMonth() - (10 - i), 1);
+      case '1Year':
+        // Last 12 months - monthly data
+        for (let i = 11; i >= 0; i--) {
+          const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
+          const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
           dateRanges.push({ 
             start: monthStart, 
             end: monthEnd, 
             label: monthStart.toLocaleString('default', { month: 'short' })
           });
         }
-        // Previous year
-        previousStart = new Date(now.getFullYear() - 1, now.getMonth() - 11, 1);
-        previousEnd = new Date(now.getFullYear() - 1, now.getMonth() + 1, 1);
         break;
 
       default:
         return res.status(400).json({
           success: false,
-          message: 'Invalid period. Use: monthly, quarterly, halfYear, or year'
+          message: 'Invalid filter. Use: 1Day, 1Month, 3Month, 4Month, or 1Year'
         });
     }
 
     // Get ticket counts for each data point
-    const chartData = await Promise.all(
+    const TicketsCharcount = await Promise.all(
       dateRanges.map(async (range) => {
         const count = await support_ticket.countDocuments({
           CreateAt: { $gte: range.start, $lt: range.end },
           Status: true
         });
         return {
-          label: range.label,
+          date: range.label,
           count
         };
       })
     );
 
-    // Get previous period count for percentage change
-    if (previousStart && previousEnd) {
-      previousPeriodCount = await support_ticket.countDocuments({
-        CreateAt: { $gte: previousStart, $lt: previousEnd },
-        Status: true
-      });
-    }
-
-    const currentPeriodCount = chartData.reduce((sum, data) => sum + data.count, 0);
-    const percentageChange = previousPeriodCount > 0
-      ? parseFloat((((currentPeriodCount - previousPeriodCount) / previousPeriodCount) * 100).toFixed(2))
-      : (currentPeriodCount > 0 ? 100 : 0);
-
     res.status(200).json({
       success: true,
       message: 'Tickets chart retrieved successfully',
-      period,
-      Chart: chartData,
-      percentageChange
+      filter,
+      data: {
+        TicketsCharcount
+      }
     });
   } catch (error) {
     res.status(500).json({

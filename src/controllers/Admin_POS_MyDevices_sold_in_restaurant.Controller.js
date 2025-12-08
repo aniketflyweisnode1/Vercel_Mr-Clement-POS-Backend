@@ -619,6 +619,123 @@ const getPOSHardwareDevices_Dashboard = async (req, res) => {
   }
 };
 
+// PosDeviceSection API
+const PosDeviceSection = async (req, res) => {
+  try {
+    // Get restaurant role
+    const restaurantRole = await Role.findOne({ 
+      role_name: { $regex: /^restaurant$/i } 
+    });
+
+    if (!restaurantRole) {
+      return res.status(404).json({
+        success: false,
+        message: 'Restaurant role not found'
+      });
+    }
+
+    // Get all restaurant users (clients)
+    const restaurantUsers = await User.find({
+      Role_id: restaurantRole.Role_id,
+      Status: true
+    });
+
+    const TotalClientsCount = restaurantUsers.length;
+
+    // Get all sold devices
+    const allSoldDevices = await Admin_POS_MyDevices_sold_in_restaurant.find({
+      Status: true,
+      paymentState: true
+    });
+
+    // Calculate TotalPrintersCount and TotalPosSystemsCount
+    let TotalPrintersCount = 0;
+    let TotalPosSystemsCount = 0;
+    let HardwareSoldcost = 0;
+
+    // Get device details to calculate prices
+    const deviceIds = [...new Set(allSoldDevices.map(d => d.MyDevices_id))];
+    const devices = await MyDevices.find({ MyDevices_id: { $in: deviceIds } });
+    const deviceMap = devices.reduce((map, device) => {
+      map[device.MyDevices_id] = device;
+      return map;
+    }, {});
+
+    allSoldDevices.forEach(sold => {
+      TotalPrintersCount += sold.PrintersCount || 0;
+      TotalPosSystemsCount += sold.SystemsCount || 0;
+      const device = deviceMap[sold.MyDevices_id];
+      if (device && device.price) {
+        HardwareSoldcost += device.price * ((sold.PrintersCount || 0) + (sold.SystemsCount || 0));
+      }
+    });
+
+    // MonthChart - Last 12 months
+    const now = new Date();
+    const MonthChart = [];
+    for (let i = 11; i >= 0; i--) {
+      const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+      
+      const monthSold = await Admin_POS_MyDevices_sold_in_restaurant.countDocuments({
+        CreateAt: { $gte: monthDate, $lt: monthEnd },
+        Status: true,
+        paymentState: true
+      });
+
+      MonthChart.push({
+        Month: monthDate.toLocaleString('default', { month: 'short', year: 'numeric' }),
+        count: monthSold
+      });
+    }
+
+    // HordwareSoldList
+    const HordwareSoldList = await Promise.all(
+      allSoldDevices.map(async (sold) => {
+        const [user, planBuy, device] = await Promise.all([
+          User.findOne({ user_id: sold.user_id }),
+          Admin_Plan_buy_Restaurant.findOne({ 
+            CreateBy: sold.user_id,
+            paymentStatus: true,
+            Status: true
+          }).sort({ CreateAt: -1 }),
+          MyDevices.findOne({ MyDevices_id: sold.MyDevices_id })
+        ]);
+
+        const plan = planBuy ? await Admin_Plan.findOne({ Admin_Plan_id: planBuy.Admin_Plan_id }) : null;
+        const client = user ? await Clients.findOne({ CreateBy: user.user_id }) : null;
+
+        return {
+          Restaurant_id: sold.user_id,
+          BusinessName: client ? client.Business_Name : (user ? user.Name : 'Unknown'),
+          PlanPurchased: plan ? plan.PlanName : null,
+          PurchasedDate: sold.CreateAt,
+          DeviceName: device ? device.Name : null
+        };
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'POS Device Section data retrieved successfully',
+      data: {
+        TotalClientsCount,
+        TotalPrintersCount,
+        TotalPosSystemsCount,
+        HardwareSoldcost: parseFloat(HardwareSoldcost.toFixed(2)),
+        MonthChart,
+        HordwareSoldList
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching POS Device Section data',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   createAdminPOSMyDevicesSoldInRestaurant,
   updateAdminPOSMyDevicesSoldInRestaurant,
@@ -626,6 +743,7 @@ module.exports = {
   getAllAdminPOSMyDevicesSoldInRestaurant,
   getAdminPOSMyDevicesSoldInRestaurantByAuth,
   deleteAdminPOSMyDevicesSoldInRestaurant,
-  getPOSHardwareDevices_Dashboard
+  getPOSHardwareDevices_Dashboard,
+  PosDeviceSection
 };
 
