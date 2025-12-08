@@ -19,7 +19,7 @@ router.put('/update', auth, updatePlan);
 router.get('/getbyid/:id', auth, getPlanById);
 
 // Get all plans (with auth)
-router.get('/getall', auth, getAllPlans);
+router.get('/getall', getAllPlans);
 
 // Get plan by auth (with auth)
 router.get('/getbyauth', auth, getPlanByAuth);

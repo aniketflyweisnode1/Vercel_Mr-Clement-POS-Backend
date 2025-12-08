@@ -267,6 +267,18 @@ const updatePosOrder = async (req, res) => {
       posOrder.Restaurant_id = resolvedRestaurantId;
     }
 
+    // If order status is changed to "Served" or "Cancelled", reset table status to 1 (Available/Waiting for next booking)
+    if (Order_Status !== undefined && (Order_Status === 'Served' || Order_Status === 'Cancelled') && posOrder.Table_id) {
+      await Table.findOneAndUpdate(
+        { Table_id: posOrder.Table_id },
+        {
+          'Table-Booking-Status_id': 1,
+          UpdatedBy: userId,
+          UpdatedAt: new Date()
+        }
+      );
+    }
+
     // Recalculate prices if items changed
     if (items !== undefined) {
       let totalSubTotal = 0;
@@ -797,6 +809,18 @@ const updatePosOrderStatus = async (req, res) => {
 
     const updatedOrder = await posOrder.save();
 
+    // If order status is "Served" or "Cancelled", reset table status to 1 (Available/Waiting for next booking)
+    if ((Order_Status === 'Served' || Order_Status === 'Cancelled') && posOrder.Table_id) {
+      await Table.findOneAndUpdate(
+        { Table_id: posOrder.Table_id },
+        {
+          'Table-Booking-Status_id': 1,
+          UpdatedBy: userId,
+          UpdatedAt: new Date()
+        }
+      );
+    }
+
     res.status(200).json({
       success: true,
       message: 'POS order status and items status updated successfully',
@@ -804,6 +828,150 @@ const updatePosOrderStatus = async (req, res) => {
     });
   } catch (error) {
     return handleControllerError(res, error, 'Error updating POS order status');
+  }
+};
+
+// Get Current Order on Table by Table ID (only active orders, not completed)
+const getCurrentOrderOnTableByTableId = async (req, res) => {
+  try {
+    const { tableId } = req.params;
+    const parsedTableId = parseInt(tableId);
+
+    if (!tableId || isNaN(parsedTableId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid table ID is required'
+      });
+    }
+
+    // Verify table exists
+    const table = await Table.findOne({ Table_id: parsedTableId });
+    if (!table) {
+      return res.status(404).json({
+        success: false,
+        message: 'Table not found'
+      });
+    }
+
+    // Find active POS order on this table (not Served or Cancelled)
+    const posOrder = await Pos_Point_sales_Order.findOne({
+      Table_id: parsedTableId,
+      Order_Status: { $nin: ['Served', 'Cancelled'] },
+      Status: true
+    }).sort({ CreateAt: -1 });
+
+    // If no active POS order, return null
+    if (!posOrder) {
+      return res.status(200).json({
+        success: true,
+        message: 'No active order found on this table',
+        data: null
+      });
+    }
+
+    // Manually fetch related data
+    const [createByUser, updatedByUser, customer, tableData, kitchen] = await Promise.all([
+      posOrder.CreateBy ? User.findOne({ user_id: posOrder.CreateBy }) : null,
+      posOrder.UpdatedBy ? User.findOne({ user_id: posOrder.UpdatedBy }) : null,
+      posOrder.Customer_id ? Customer.findOne({ Customer_id: posOrder.Customer_id }) : null,
+      posOrder.Table_id ? Table.findOne({ Table_id: posOrder.Table_id }) : null,
+      posOrder.Kitchen_id ? Kitchen.findOne({ kitchen_id: posOrder.Kitchen_id }) : null
+    ]);
+
+    // Populate items array with detailed information
+    const populatedItems = await Promise.all(
+      posOrder.items.map(async (itemData) => {
+        const { item_id, item_Quentry, item_Addons_id, item_Variants_id, item_status, item_size } = itemData;
+        
+        const [item, addon, variant] = await Promise.all([
+          Items.findOne({ Items_id: parseInt(item_id) }),
+          item_Addons_id ? item_Addons.findOne({ item_Addons_id: parseInt(item_Addons_id) }) : null,
+          item_Variants_id ? item_Variants.findOne({ item_Variants_id: parseInt(item_Variants_id) }) : null
+        ]);
+
+        return {
+          item_id,
+          item_Quentry,
+          item_Addons_id,
+          item_Variants_id,
+          item_status: item_status || 'Preparing',
+          item_size: item_size || null,
+          Item: item ? { 
+            Items_id: item.Items_id,
+            item_id: item.Items_id, 
+            item_name: item['item-name'], 
+            'item-name': item['item-name'],
+            'item-code': item['item-code'],
+            'item-price': item['item-price'],
+            prices: item.prices 
+          } : null,
+          Addon: addon ? { 
+            item_Addons_id: addon.item_Addons_id, 
+            Addons: addon.Addons, 
+            prices: addon.prices 
+          } : null,
+          Variant: variant ? { 
+            item_Variants_id: variant.item_Variants_id, 
+            Variants: variant.Variants, 
+            prices: variant.prices 
+          } : null
+        };
+      })
+    );
+
+    const posOrderResponse = posOrder.toObject();
+    
+    // Ensure all IDs are included in the response
+    posOrderResponse.POS_Order_id = posOrder.POS_Order_id;
+    posOrderResponse.Customer_id = posOrder.Customer_id;
+    posOrderResponse.Table_id = posOrder.Table_id;
+    posOrderResponse.Kitchen_id = posOrder.Kitchen_id;
+    posOrderResponse.Restaurant_id = posOrder.Restaurant_id;
+    posOrderResponse.CreateBy_id = posOrder.CreateBy;
+    posOrderResponse.UpdatedBy_id = posOrder.UpdatedBy;
+    
+    // Populated relationships with complete data
+    posOrderResponse.CreateBy = createByUser ? { 
+      user_id: createByUser.user_id, 
+      Name: createByUser.Name, 
+      email: createByUser.email,
+      Employee_id: createByUser.Employee_id
+    } : null;
+    posOrderResponse.UpdatedBy = updatedByUser ? { 
+      user_id: updatedByUser.user_id, 
+      Name: updatedByUser.Name, 
+      email: updatedByUser.email,
+      Employee_id: updatedByUser.Employee_id
+    } : null;
+    posOrderResponse.items = populatedItems;
+    posOrderResponse.Customer = customer ? { 
+      Customer_id: customer.Customer_id, 
+      Name: customer.Name, 
+      phone: customer.phone,
+      Address: customer.Address
+    } : null;
+    posOrderResponse.Table = tableData ? { 
+      table_id: tableData.Table_id, 
+      table_name: tableData['Table-name'],
+      'Table-name': tableData['Table-name'],
+      'Table-code': tableData['Table-code']
+    } : null;
+    posOrderResponse.Kitchen = kitchen ? { 
+      kitchen_id: kitchen.kitchen_id, 
+      kitchen_name: kitchen.kitchen_name
+    } : null;
+
+    res.status(200).json({
+      success: true,
+      message: 'Current order on table retrieved successfully',
+      data: posOrderResponse
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching current order on table',
+      error: error.message
+    });
   }
 };
 
@@ -815,5 +983,6 @@ module.exports = {
   getPosOrdersByAuth,
   deletePosOrder,
   updatePosOrderItemStatus,
-  updatePosOrderStatus
+  updatePosOrderStatus,
+  getCurrentOrderOnTableByTableId
 };

@@ -16,7 +16,8 @@ const {
   getPosOrdersByAuth,
   deletePosOrder,
   updatePosOrderItemStatus,
-  updatePosOrderStatus
+  updatePosOrderStatus,
+  getCurrentOrderOnTableByTableId
 } = require('../../controllers/Pos_Point_sales_Order.Controller');
 
 // Create POS order (with auth)
@@ -39,6 +40,9 @@ router.get('/getall', auth, getAllPosOrders);
 
 // Get POS orders by authenticated user (with auth)
 router.get('/my-orders', auth, getPosOrdersByAuth);
+
+// Get current order on table by table ID (with auth)
+router.get('/table/:tableId/current-order', auth, getCurrentOrderOnTableByTableId);
 
 // Delete POS order (with auth)
 router.delete('/delete/:id', auth, deletePosOrder);
