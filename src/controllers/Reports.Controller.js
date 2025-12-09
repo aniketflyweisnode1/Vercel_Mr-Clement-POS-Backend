@@ -2147,10 +2147,10 @@ const dashboard = async (req, res) => {
 const getRestaurantPerformance = async (req, res) => {
   try {
     // Get filter from query parameter (24H, 1 week, 1 Month, 6 Month)
-    const { filter = '24H' } = req.query;
+    const { filter = '24H', restaurant_id } = req.query;
     
-    // Get restaurant ID from authenticated user
-    const restaurantId = req.user?.user_id;
+    // Get restaurant ID from query parameter or authenticated user
+    const restaurantId = restaurant_id ? parseInt(restaurant_id) : req.user?.user_id;
     
     if (!restaurantId || isNaN(restaurantId)) {
       return res.status(400).json({
