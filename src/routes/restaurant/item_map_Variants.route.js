@@ -9,7 +9,8 @@ const {
   getAllItemMapVariants,
   getItemMapVariantsByAuth,
   getItemMapVariantsByItemId,
-  deleteItemMapVariants
+  deleteItemMapVariants,
+  getbyitemwithVariants
 } = require('../../controllers/item_map_Variants.Controller');
 
 // Item map variants routes
@@ -19,6 +20,7 @@ router.get('/get/:id', auth, getItemMapVariantsById);
 router.get('/getall', getAllItemMapVariants);
 router.get('/getbyauth', auth, getItemMapVariantsByAuth);
 router.get('/getbyitemid/:itemid', auth, getItemMapVariantsByItemId);
+router.get('/getbyitemwithVariants/:itemid', auth, getbyitemwithVariants);
 router.delete('/delete/:id', auth, deleteItemMapVariants);
 
 module.exports = router;

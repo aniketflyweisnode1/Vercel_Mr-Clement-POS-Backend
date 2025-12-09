@@ -288,6 +288,75 @@ const getItemMapVariantsByItemId = async (req, res) => {
   }
 };
 
+// Get Item with Variants by Item ID
+const getbyitemwithVariants = async (req, res) => {
+  try {
+    const { itemid } = req.params;
+    
+    if (!itemid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Item ID is required'
+      });
+    }
+
+    // Get item details
+    const item = await Items.findOne({ Items_id: parseInt(itemid), Status: true });
+    
+    if (!item) {
+      return res.status(404).json({
+        success: false,
+        message: 'Item not found'
+      });
+    }
+
+    // Get all variants mapped to this item
+    const itemMapVariants = await item_map_Variants.find({ 
+      item_id: parseInt(itemid), 
+      Status: true 
+    }).sort({ CreateAt: -1 });
+
+    // Fetch variant details for all mapped variants
+    const variants = await Promise.all(
+      itemMapVariants.map(async (itemMapVariant) => {
+        const variant = await item_Variants.findOne({ 
+          item_Variants_id: itemMapVariant.item_Variants_id,
+          Status: true
+        });
+        
+        if (variant) {
+          return {
+            item_Variants_id: variant.item_Variants_id,
+            Variants: variant.Variants,
+            prices: variant.prices,
+            item_map_Variants_id: itemMapVariant.item_map_Variants_id
+          };
+        }
+        return null;
+      })
+    );
+
+    // Filter out null values
+    const validVariants = variants.filter(v => v !== null);
+
+    // Create response with item and its variants
+    const itemResponse = item.toObject();
+    itemResponse.Variants = validVariants;
+
+    res.status(200).json({
+      success: true,
+      message: 'Item with variants retrieved successfully',
+      data: itemResponse
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching item with variants',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   createItemMapVariants,
   updateItemMapVariants,
@@ -295,5 +364,6 @@ module.exports = {
   getAllItemMapVariants,
   getItemMapVariantsByAuth,
   getItemMapVariantsByItemId,
-  deleteItemMapVariants
+  deleteItemMapVariants,
+  getbyitemwithVariants
 };
